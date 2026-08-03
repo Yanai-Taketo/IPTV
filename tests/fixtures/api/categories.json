@@ -1,0 +1,4 @@
+[
+  {"id":"news","name":"News","description":"News channels"},
+  {"id":"general","name":"General","description":"General channels"}
+]

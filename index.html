@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Global IPTV Player — 世界のテレビをブラウザで</title>
+  <meta name="description" content="iptv-org が公開する全世界の IPTV チャンネル 1 万局以上をブラウザからストリーミング再生できるプレイヤー">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📺</text></svg>">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js"
+    integrity="sha384-5E8B0pTlZZJMabWpC0fyYf6OUpe15jJij34BqBAh4NXoHAlLNOjCPRrwtOXOQFAn"
+    crossorigin="anonymous"></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="header-row">
+      <h1 class="site-title">📺 Global IPTV Player</h1>
+      <span id="stats" class="stats" aria-live="polite"></span>
+    </div>
+    <div class="controls">
+      <input id="search" type="search" placeholder="チャンネル名・国名で検索…" autocomplete="off" aria-label="チャンネル検索">
+      <select id="filter-country" aria-label="国・地域で絞り込み"></select>
+      <select id="filter-category" aria-label="カテゴリで絞り込み"></select>
+      <select id="filter-language" aria-label="言語で絞り込み"></select>
+      <select id="sort-order" aria-label="並び順">
+        <option value="name">名前順</option>
+        <option value="country">国順</option>
+      </select>
+      <label class="check">
+        <input id="https-only" type="checkbox">
+        HTTPS 配信のみ
+      </label>
+      <button id="shuffle-btn" type="button" class="action-btn">🎲 ランダム再生</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="loading" class="center-screen">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>チャンネルデータを読み込んでいます…</p>
+      <ul id="loading-list" class="loading-list"></ul>
+    </div>
+
+    <div id="load-error" class="center-screen" hidden>
+      <p>⚠ データの読み込みに失敗しました</p>
+      <p id="load-error-msg" class="error-detail"></p>
+      <button id="retry-btn" type="button" class="action-btn">再試行</button>
+    </div>
+
+    <div id="app" hidden>
+      <div id="grid" class="grid"></div>
+      <p id="empty" class="center-screen" hidden>条件に一致するチャンネルがありません</p>
+      <div id="sentinel" class="sentinel" aria-hidden="true"></div>
+    </div>
+  </main>
+
+  <dialog id="player-modal" aria-label="プレイヤー">
+    <div class="player-head">
+      <div class="player-title-wrap">
+        <span id="player-flag" class="player-flag"></span>
+        <div>
+          <h2 id="player-title" class="player-title"></h2>
+          <p id="player-meta" class="player-meta"></p>
+        </div>
+      </div>
+      <button id="player-close" type="button" class="action-btn" aria-label="プレイヤーを閉じる">✕ 閉じる</button>
+    </div>
+    <div class="player-stage">
+      <video id="player-video" controls playsinline></video>
+      <button id="player-unmute" type="button" class="unmute-btn" hidden>🔇 ミュート解除</button>
+    </div>
+    <p id="player-status" class="player-status" role="status"></p>
+    <div id="player-variants" class="player-variants"></div>
+    <div id="player-error" class="player-error" hidden>
+      <p>この配信はブラウザから再生できませんでした。よくある原因:</p>
+      <ul>
+        <li>配信サーバが CORS(クロスオリジン再生)を許可していない</li>
+        <li>地域制限(ジオブロック)により視聴地域外</li>
+        <li>配信が停止中・URL が変更された</li>
+        <li>HTTP 配信のため HTTPS ページから読み込めない</li>
+      </ul>
+      <p>VLC などの外部プレイヤーでは再生できる場合があります。</p>
+      <div id="player-error-actions" class="player-error-actions"></div>
+    </div>
+  </dialog>
+
+  <footer class="site-footer">
+    <p>
+      データソース: <a href="https://github.com/iptv-org/iptv" target="_blank" rel="noopener noreferrer">iptv-org/iptv</a>
+      / <a href="https://github.com/iptv-org/api" target="_blank" rel="noopener noreferrer">iptv-org/api</a>(パブリックドメイン)。
+      各ストリームの著作権はそれぞれの放送局に帰属します。アダルトチャンネルはデータソースの方針により含まれていません。
+    </p>
+  </footer>
+
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/player.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>

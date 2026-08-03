@@ -1,0 +1,5 @@
+[
+  {"channel":"NHKWorldJapan.jp","feed":null,"in_use":true,"tags":[],"width":512,"height":512,"format":"PNG","url":"https://fixture.test/logos/nhk.png"},
+  {"channel":"NHKWorldJapan.jp","feed":null,"in_use":true,"tags":[],"width":100,"height":100,"format":"JPEG","url":"https://fixture.test/logos/nhk-small.jpg"},
+  {"channel":"TestMulti.jp","feed":null,"in_use":false,"tags":[],"width":512,"height":512,"format":"PNG","url":"https://fixture.test/logos/unused.png"}
+]

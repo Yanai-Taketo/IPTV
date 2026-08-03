@@ -1,0 +1,6 @@
+[
+  {"name":"Japan","code":"JP","languages":["jpn"],"flag":"🇯🇵"},
+  {"name":"United States","code":"US","languages":["eng"],"flag":"🇺🇸"},
+  {"name":"France","code":"FR","languages":["fra"],"flag":"🇫🇷"},
+  {"name":"Russia","code":"RU","languages":["rus"],"flag":"🇷🇺"}
+]

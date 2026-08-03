@@ -1,0 +1,15 @@
+{
+  "name": "iptv-web-player",
+  "version": "1.0.0",
+  "private": true,
+  "description": "iptv-org が公開する全世界の IPTV チャンネルをブラウザで再生する静的 Web ページ",
+  "scripts": {
+    "serve": "http-server -p 8080 -c-1 .",
+    "test": "playwright test --project=hermetic",
+    "test:live": "playwright test --project=live",
+    "test:all": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}

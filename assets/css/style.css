@@ -1,0 +1,387 @@
+/* Global IPTV Player — ダークテーマ */
+
+:root {
+  --bg: #0e1116;
+  --bg-elev: #161b22;
+  --bg-card: #1b222c;
+  --border: #2b3441;
+  --text: #e6edf3;
+  --text-dim: #8b98a9;
+  --accent: #3fa9f5;
+  --accent-dim: #1f6fb2;
+  --warn: #e3b341;
+  --error: #f47067;
+  --ok: #57ab5a;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+a { color: var(--accent); }
+
+/* ---- ヘッダー ---- */
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: rgba(14, 17, 22, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+}
+
+.header-row {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.site-title {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.stats {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.controls input[type="search"],
+.controls select {
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  font-size: 0.9rem;
+  max-width: 230px;
+}
+
+.controls input[type="search"] { flex: 1 1 200px; }
+.controls select { flex: 0 1 auto; }
+
+.controls input[type="search"]:focus-visible,
+.controls select:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  user-select: none;
+}
+
+.action-btn {
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 12px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.action-btn:hover { border-color: var(--accent); }
+
+/* ---- ローディング / 状態表示 ---- */
+
+.center-screen {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-dim);
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 12px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2s; }
+}
+
+.loading-list {
+  list-style: none;
+  padding: 0;
+  font-size: 0.8rem;
+  font-family: ui-monospace, monospace;
+}
+
+.error-detail { color: var(--error); font-size: 0.85rem; }
+
+/* ---- チャンネルグリッド ---- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0;
+  cursor: pointer;
+  color: var(--text);
+  font: inherit;
+  overflow: hidden;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.card-logo {
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #10151c;
+  padding: 8px;
+}
+
+.card-logo img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.logo-placeholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.card-body { padding: 10px 12px 12px; }
+
+.card-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.card-meta {
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-badges {
+  display: flex;
+  gap: 5px;
+  margin-top: 7px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  font-size: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--text-dim);
+}
+
+.badge.quality { color: var(--accent); border-color: var(--accent-dim); }
+.badge.warn { color: var(--warn); border-color: var(--warn); }
+
+.sentinel { height: 4px; }
+
+/* ---- プレイヤーモーダル ---- */
+
+#player-modal {
+  width: min(920px, calc(100vw - 24px));
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+#player-modal::backdrop {
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.player-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.player-title-wrap {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.player-flag { font-size: 1.7rem; }
+
+.player-title {
+  margin: 0;
+  font-size: 1.1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-meta {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+}
+
+.player-stage {
+  position: relative;
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+#player-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+
+.unmute-btn {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  border: 1px solid #fff5;
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.player-status {
+  min-height: 1.4em;
+  margin: 10px 2px 0;
+  font-size: 0.88rem;
+  color: var(--text-dim);
+}
+
+.player-status[data-kind="ok"] { color: var(--ok); }
+.player-status[data-kind="warn"] { color: var(--warn); }
+.player-status[data-kind="error"] { color: var(--error); }
+
+.player-variants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+.variants-label {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+
+.variant-btn {
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.variant-btn.active { border-color: var(--accent); color: var(--accent); }
+.variant-btn.failed { text-decoration: line-through; opacity: 0.6; }
+
+.player-error {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--error);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.player-error ul { margin: 6px 0; padding-left: 20px; }
+
+.player-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ---- フッター ---- */
+
+.site-footer {
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  padding: 14px 16px;
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .controls input[type="search"],
+  .controls select { max-width: 100%; flex: 1 1 45%; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}

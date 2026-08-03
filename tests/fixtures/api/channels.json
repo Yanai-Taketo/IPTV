@@ -1,0 +1,9 @@
+[
+  {"id":"NHKWorldJapan.jp","name":"NHK World Japan","alt_names":["NHKワールド"],"network":"NHK","owners":["NHK"],"country":"JP","categories":["news"],"is_nsfw":false,"launched":null,"closed":null,"replaced_by":null,"website":"https://www3.nhk.or.jp/nhkworld/"},
+  {"id":"TestMulti.jp","name":"Multi Stream TV","alt_names":[],"network":null,"owners":[],"country":"JP","categories":["general"],"is_nsfw":false,"launched":null,"closed":null,"replaced_by":null,"website":null},
+  {"id":"USNews.us","name":"US News Channel","alt_names":[],"network":null,"owners":[],"country":"US","categories":["news"],"is_nsfw":false,"launched":null,"closed":null,"replaced_by":null,"website":null},
+  {"id":"AdultChan.us","name":"Adult Channel","alt_names":[],"network":null,"owners":[],"country":"US","categories":["general"],"is_nsfw":true,"launched":null,"closed":null,"replaced_by":null,"website":null},
+  {"id":"NoStream.fr","name":"No Stream TV","alt_names":[],"network":null,"owners":[],"country":"FR","categories":["general"],"is_nsfw":false,"launched":null,"closed":null,"replaced_by":null,"website":null},
+  {"id":"HttpOnly.ru","name":"Http Only TV","alt_names":[],"network":null,"owners":[],"country":"RU","categories":[],"is_nsfw":false,"launched":null,"closed":null,"replaced_by":null,"website":null},
+  {"id":"ProgressiveTV.us","name":"Progressive TV","alt_names":[],"network":null,"owners":[],"country":"US","categories":["general"],"is_nsfw":false,"launched":null,"closed":null,"replaced_by":null,"website":null}
+]
