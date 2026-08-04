@@ -124,3 +124,36 @@ EPG 実装(docs/epg-design.md)完了後の「他に追加できそうな機能�
 3. 実データでの確認をしたければ README の手順で `tests/fixtures/realdata/` を取得
 4. 機能実装は §3 の候補から選ぶ。設計判断の前提は docs/epg-design.md と
    docs/playability-research.md を先に読むこと
+
+## 5. 次セッション用の指示プロンプト(コピペ用)
+
+```
+docs/next-features.md(検証済みの機能候補 29 件と引き継ぎ情報)を読み、
+「おすすめ実装順トップ 5」を上から順に実装してください。
+調査・反証検証は完了済みなので再調査は不要です。各候補の表の
+「検証済みの要点」に実装アプローチと注意点が書いてあります。
+
+進め方:
+- 最初に docs/next-features.md 全体と docs/epg-design.md を読むこと
+- セットアップ: git fetch origin epg-data && git checkout FETCH_HEAD -- data/epg
+  → npm ci && npm test で 64 件全通過を確認してから着手
+- 新しい claude/ ブランチで開発し、機能 1 つごとに「実装 + ハーメチック
+  テスト + コミット」で完結させる。全部やろうとして中途半端にしない。
+  時間内に終わらない候補は着手せず、進捗を docs/next-features.md に追記する
+- main への反映は私が指示したときだけ。反映後、CI(GitHub Actions)に
+  影響する変更は実環境のワークフロー実行まで監視して結果を報告する
+
+品質基準(このリポジトリの慣習):
+- テストは tests/helpers.js のルーティング機構によるハーメチック方式。
+  EPG・時刻に関わるテストは擬似クロック凍結(tests/epg.spec.js 参照)
+- データが無い環境(404)でのグレースフルデグラデーション必須
+- UI は既存のエディトリアルデザイン(新聞テレビ欄風、assets/css/style.css の
+  変数・パターン)に合わせる
+- data/epg/ は gitignore 済み。main にコミットしない(epg-data ブランチは CI が管理)
+
+環境の注意:
+- この開発環境の Chromium は外部 HTTPS サイトを開けない(プロキシ制約)。
+  本番サイト https://iptv.ta-yanai.com/ の確認は「本番の data/epg/* を
+  ダウンロードしてローカル配信 + tests/fixtures/realdata/ の API スナップ
+  ショットを route 注入」方式で行う(docs/next-features.md §2-3 参照)
+```
