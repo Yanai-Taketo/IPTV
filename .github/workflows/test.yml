@@ -1,0 +1,35 @@
+name: Playwright tests
+
+# push / PR ごとにハーメチックテスト(外部通信なし)を実行する安全網。
+# live プロジェクト(実 API)はネットワーク依存で不安定になるため CI では回さない。
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hermetic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run hermetic tests
+        run: npm test
