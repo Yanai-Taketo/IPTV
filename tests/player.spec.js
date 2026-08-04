@@ -90,6 +90,13 @@ test.describe('プレイヤー', () => {
     expect(results.noExt).toBe('hls');
   });
 
+  test('DASH 配信は dash.js の読み込み失敗時にエラー処理へフォールバックする', async ({ page }) => {
+    // キャッチオールルートが dash.js CDN を遮断するため、読み込み失敗 → 全ソース失敗の経路を通る
+    await page.locator('.card', { hasText: 'ZZ Dash TV' }).click();
+    await expect(page.locator('#player-status')).toContainText('dash.js の読み込みに失敗しました', { timeout: 20000 });
+    await expect(page.locator('#player-error')).toBeVisible();
+  });
+
   test('ランダム再生ボタンでプレイヤーが開く', async ({ page }) => {
     await page.locator('#shuffle-btn').click();
     await expect(page.locator('#player-modal')).toHaveAttribute('open', '');

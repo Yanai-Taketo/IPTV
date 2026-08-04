@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Global IPTV Player — 世界のテレビをブラウザで</title>
+  <title>Global IPTV — 世界の放送をブラウザで</title>
   <meta name="description" content="iptv-org が公開する全世界の IPTV チャンネル 1 万局以上をブラウザからストリーミング再生できるプレイヤー">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📺</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><rect width=%2232%22 height=%2232%22 fill=%22%23191611%22/><rect x=%224%22 y=%228%22 width=%224%22 height=%2216%22 fill=%22%23fff%22/><rect x=%228%22 y=%228%22 width=%224%22 height=%2216%22 fill=%22%23e8c100%22/><rect x=%2212%22 y=%228%22 width=%224%22 height=%2216%22 fill=%22%2300b3a4%22/><rect x=%2216%22 y=%228%22 width=%224%22 height=%2216%22 fill=%22%2300a651%22/><rect x=%2220%22 y=%228%22 width=%224%22 height=%2216%22 fill=%22%23c5299b%22/><rect x=%2224%22 y=%228%22 width=%224%22 height=%2216%22 fill=%22%23d92b21%22/></svg>">
   <link rel="stylesheet" href="assets/css/style.css">
   <script defer src="https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js"
     integrity="sha384-5E8B0pTlZZJMabWpC0fyYf6OUpe15jJij34BqBAh4NXoHAlLNOjCPRrwtOXOQFAn"
@@ -13,13 +13,28 @@
 </head>
 <body>
 
-  <header class="site-header">
-    <div class="header-row">
-      <h1 class="site-title">📺 Global IPTV Player</h1>
-      <span id="stats" class="stats" aria-live="polite"></span>
+  <header class="masthead">
+    <div class="masthead-top">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div class="brand-text">
+          <h1 class="brand-word">GLOBAL&nbsp;IPTV</h1>
+          <p class="brand-sub">世界の公開放送チャンネルガイド<span class="brand-sub-en"> — WORLD PROGRAMME GRID</span></p>
+        </div>
+      </div>
+      <div class="masthead-side">
+        <div class="colorbars" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+        <div class="signal-row">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span id="clock" class="clock">UTC --:--:--</span>
+        </div>
+        <span id="stats" class="stats" aria-live="polite"></span>
+      </div>
     </div>
-    <div class="controls">
-      <input id="search" type="search" placeholder="チャンネル名・国名で検索…" autocomplete="off" aria-label="チャンネル検索">
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="チャンネル名・国名で検索" autocomplete="off" aria-label="チャンネル検索">
       <select id="filter-country" aria-label="国・地域で絞り込み"></select>
       <select id="filter-category" aria-label="カテゴリで絞り込み"></select>
       <select id="filter-language" aria-label="言語で絞り込み"></select>
@@ -29,26 +44,32 @@
       </select>
       <label class="check">
         <input id="https-only" type="checkbox">
-        HTTPS 配信のみ
+        HTTPS のみ
       </label>
-      <button id="shuffle-btn" type="button" class="action-btn">🎲 ランダム再生</button>
+      <button id="shuffle-btn" type="button" class="action-btn">ランダム選局</button>
     </div>
   </header>
 
   <main>
     <div id="loading" class="center-screen">
-      <div class="spinner" aria-hidden="true"></div>
+      <div class="loading-bars" aria-hidden="true">
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      </div>
       <p>チャンネルデータを読み込んでいます…</p>
       <ul id="loading-list" class="loading-list"></ul>
     </div>
 
     <div id="load-error" class="center-screen" hidden>
-      <p>⚠ データの読み込みに失敗しました</p>
+      <p>データの読み込みに失敗しました</p>
       <p id="load-error-msg" class="error-detail"></p>
       <button id="retry-btn" type="button" class="action-btn">再試行</button>
     </div>
 
     <div id="app" hidden>
+      <div class="grid-head" aria-hidden="true">
+        <span>PROGRAMME GRID</span>
+        <span>すべての公開チャンネル</span>
+      </div>
       <div id="grid" class="grid"></div>
       <p id="empty" class="center-screen" hidden>条件に一致するチャンネルがありません</p>
       <div id="sentinel" class="sentinel" aria-hidden="true"></div>
@@ -59,16 +80,16 @@
     <div class="player-head">
       <div class="player-title-wrap">
         <span id="player-flag" class="player-flag"></span>
-        <div>
+        <div class="player-title-text">
           <h2 id="player-title" class="player-title"></h2>
           <p id="player-meta" class="player-meta"></p>
         </div>
       </div>
-      <button id="player-close" type="button" class="action-btn" aria-label="プレイヤーを閉じる">✕ 閉じる</button>
+      <button id="player-close" type="button" class="player-close" aria-label="プレイヤーを閉じる">✕ 閉じる</button>
     </div>
     <div class="player-stage">
       <video id="player-video" controls playsinline></video>
-      <button id="player-unmute" type="button" class="unmute-btn" hidden>🔇 ミュート解除</button>
+      <button id="player-unmute" type="button" class="unmute-btn" hidden>ミュート解除</button>
     </div>
     <p id="player-status" class="player-status" role="status"></p>
     <div id="player-variants" class="player-variants"></div>

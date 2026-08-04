@@ -11,9 +11,9 @@ test.describe('チャンネル一覧 UI', () => {
   });
 
   test('ストリームを持つチャンネルだけがグリッドに表示される', async ({ page }) => {
-    // 7 チャンネル中: NSFW 1 件・ストリーム無し 1 件を除外し、孤児ストリーム 1 件を追加 → 6 エントリ
-    await expect(page.locator('.card')).toHaveCount(6);
-    await expect(page.locator('#stats')).toHaveText('6 / 6 チャンネル');
+    // 8 チャンネル中: NSFW 1 件・ストリーム無し 1 件を除外し、孤児ストリーム 1 件を追加 → 7 エントリ
+    await expect(page.locator('.card')).toHaveCount(7);
+    await expect(page.locator('#stats')).toHaveText('7 / 7 チャンネル');
     await expect(page.locator('.card', { hasText: 'NHK World Japan' })).toBeVisible();
     await expect(page.locator('.card', { hasText: 'Orphan Stream' })).toBeVisible();
   });
@@ -33,7 +33,7 @@ test.describe('チャンネル一覧 UI', () => {
     await expect(page.locator('.card')).toHaveCount(1);
 
     await page.fill('#search', '');
-    await expect(page.locator('.card')).toHaveCount(6);
+    await expect(page.locator('.card')).toHaveCount(7);
   });
 
   test('国・カテゴリ・言語での絞り込み', async ({ page }) => {
@@ -59,7 +59,7 @@ test.describe('チャンネル一覧 UI', () => {
     // http ページ配信なので初期状態ではオフ
     await expect(page.locator('#https-only')).not.toBeChecked();
     await page.check('#https-only');
-    await expect(page.locator('.card')).toHaveCount(5);
+    await expect(page.locator('.card')).toHaveCount(6);
     await expect(page.locator('.card', { hasText: 'Http Only TV' })).toHaveCount(0);
   });
 

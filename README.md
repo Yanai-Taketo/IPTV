@@ -1,8 +1,26 @@
-# 📺 Global IPTV Player
+# Global IPTV — 世界の放送をブラウザで
 
 [iptv-org/iptv](https://github.com/iptv-org/iptv) が公開している全世界の IPTV チャンネル(約 1 万局)をブラウザからストリーミング再生できる静的 Web ページです。ビルド不要・サーバサイド不要で、GitHub Pages などの静的ホスティングにそのまま配置できます。
 
 ![スクリーンショット](docs/screenshot.png)
+
+## デザイン
+
+「国際番組表」をコンセプトに、新聞のテレビ欄と放送局のマスター管制室を参照した
+エディトリアルデザインを採用しています。
+
+- **紙面のような配色** — 温かみのある紙色の地に墨色の罫線・文字、アクセントは放送レッドのみ
+- **表組みグリッド** — 1px のヘアライン罫で区切られた印刷物のテレビ欄風レイアウト。
+  ロゴは乗算ブレンドで紙面に馴染ませる
+- **タイポグラフィ** — 見出し・チャンネル名に [Archivo](https://fonts.google.com/specimen/Archivo)(可変フォント・同梱)、
+  時刻・国名・画質などの技術メタ情報に [IBM Plex Mono](https://fonts.google.com/specimen/IBM+Plex+Mono)(同梱)、
+  日本語はシステムフォント
+- **放送のディテール** — マストヘッドの SMPTE カラーバー、UTC 時計、LIVE インジケータ、
+  チューニング風ローディング表示。プレイヤーは黒スタージ + 赤いオンエアバーの管制室風
+
+| プレイヤー | モバイル |
+|---|---|
+| ![プレイヤー](docs/screenshot-player.png) | ![モバイル](docs/screenshot-mobile.png) |
 
 ## 機能
 
@@ -42,7 +60,8 @@ npx http-server -p 8080 .
 | `assets/js/data.js` | iptv-org API の取得と結合(streams → channels / feeds / logos / countries / categories / languages) |
 | `assets/js/player.js` | プレイヤーモーダル(hls.js / ネイティブ HLS / dash.js / プログレッシブ、自動フォールバック) |
 | `assets/js/app.js` | UI 状態管理・検索・絞り込み・遅延描画 |
-| `assets/css/style.css` | ダークテーマ UI |
+| `assets/css/style.css` | エディトリアル UI(番組表グリッド・プレイヤー管制室スタイル) |
+| `assets/fonts/` | 同梱 Web フォント(Archivo 可変・IBM Plex Mono、latin サブセット、OFL) |
 
 ### データ結合の要点(iptv-org API 仕様)
 
@@ -81,7 +100,9 @@ npm run test:live # 実 API へのスモークテスト(到達不可なら自動
 
 - `tests/app.spec.js` — 一覧・検索・絞り込み・ソート・NSFW 除外・ディープリンク
 - `tests/player.spec.js` — HLS パイプライン(マニフェスト→セグメント取得)、
-  WebM 実再生、自動フォールバック、エラーパネル、URL 分類
+  WebM 実再生、自動フォールバック、エラーパネル、URL 分類、DASH フォールバック
+- `tests/resilience.spec.js` — 任意エンドポイント欠落時の縮退動作、必須エンドポイント
+  失敗 → 再試行の復帰
 - `tests/realdata.spec.js` — 実データスナップショット(4 万チャンネル)での
   スケール検証(スナップショット未取得時は自動スキップ。取得方法はファイル冒頭参照)
 - `tests/live.spec.js` — 実 API スモークテスト
@@ -93,5 +114,6 @@ HLS はネットワークパイプラインまで、実デコードは VP8/WebM 
 
 - チャンネルデータ: [iptv-org](https://github.com/iptv-org)(パブリックドメイン, [Unlicense](https://github.com/iptv-org/iptv/blob/master/LICENSE))
 - 再生: [hls.js](https://github.com/video-dev/hls.js) / [dash.js](https://github.com/Dash-Industry-Forum/dash.js)
+- フォント: [Archivo](https://github.com/Omnibus-Type/Archivo) / [IBM Plex Mono](https://github.com/IBM/plex)(いずれも SIL Open Font License 1.1)
 - 各ストリームの著作権はそれぞれの放送局・配信者に帰属します。本プロジェクトは
   動画ファイルを一切ホストせず、公開されているストリームへのリンクのみを扱います。

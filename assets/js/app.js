@@ -6,6 +6,7 @@
  */
 (() => {
   const CHUNK_SIZE = 60;
+  const OBSERVER_MARGIN = 600;
   const PAGE_HTTPS = location.protocol === 'https:';
 
   const state = {
@@ -74,12 +75,14 @@
       dom.app.hidden = false;
       buildFilters();
       applyFilters();
-      openFromHash();
     } catch (err) {
       dom.loading.hidden = true;
       dom.loadError.hidden = false;
       dom.loadErrorMsg.textContent = err.message;
+      return;
     }
+    // ディープリンク起因のエラーがデータ読み込み失敗として表示されないよう try の外で開く
+    openFromHash();
   }
 
   // ---- フィルタ UI ----------------------------------------------------------
@@ -93,6 +96,10 @@
 
   function buildFilters() {
     const d = state.data;
+    // 再試行時に選択肢が重複しないよう毎回作り直す
+    dom.country.textContent = '';
+    dom.category.textContent = '';
+    dom.language.textContent = '';
     addOption(dom.country, '', `すべての国・地域 (${d.totals.countries})`);
     for (const c of d.countryOptions) addOption(dom.country, c.code, `${c.flag} ${c.name} (${c.count})`);
 
@@ -124,9 +131,9 @@
     });
 
     if (state.sort === 'country') {
-      state.filtered.sort((a, b) => a.countryName.localeCompare(b.countryName, 'en') || a.name.localeCompare(b.name, 'en'));
+      state.filtered.sort((a, b) => a.countryName.localeCompare(b.countryName, 'en') || a.sortKey.localeCompare(b.sortKey, 'en'));
     } else {
-      state.filtered.sort((a, b) => a.name.localeCompare(b.name, 'en'));
+      state.filtered.sort((a, b) => a.sortKey.localeCompare(b.sortKey, 'en'));
     }
 
     dom.stats.textContent = `${state.filtered.length.toLocaleString('ja-JP')} / ${d.totals.channels.toLocaleString('ja-JP')} チャンネル`;
@@ -187,7 +194,7 @@
         return c ? c.name : id;
       })
       .join(', ');
-    meta.textContent = `${entry.flag} ${entry.countryName}${catNames ? ' ・ ' + catNames : ''}`;
+    meta.textContent = `${entry.flag} ${entry.countryName}${catNames ? ' · ' + catNames : ''}`;
     body.appendChild(meta);
 
     const badges = document.createElement('div');
@@ -227,6 +234,14 @@
     state.rendered = end;
     dom.grid.appendChild(frag);
     dom.sentinel.hidden = state.rendered >= state.filtered.length;
+    // IntersectionObserver は交差状態の「変化」しか通知しないため、
+    // 広い画面で 1 チャンクが番兵を観測圏外へ押し出せない場合は続けて描画する
+    if (
+      state.rendered < state.filtered.length &&
+      dom.sentinel.getBoundingClientRect().top < window.innerHeight + OBSERVER_MARGIN
+    ) {
+      requestAnimationFrame(renderChunk);
+    }
   }
 
   function initObserver() {
@@ -234,7 +249,7 @@
       if (entries.some((e) => e.isIntersecting) && state.rendered < state.filtered.length) {
         renderChunk();
       }
-    }, { rootMargin: '600px' });
+    }, { rootMargin: `${OBSERVER_MARGIN}px` });
     observer.observe(dom.sentinel);
   }
 
@@ -248,7 +263,12 @@
   function openFromHash() {
     const m = location.hash.match(/^#play=(.+)$/);
     if (!m) return;
-    const key = decodeURIComponent(m[1]);
+    let key;
+    try {
+      key = decodeURIComponent(m[1]);
+    } catch (err) {
+      return; // 壊れたパーセントエンコーディングは黙って無視する
+    }
     const entry = state.data.entries.find((e) => e.key === key);
     if (entry) IPTVPlayer.open(entry);
   }
@@ -288,6 +308,18 @@
     });
   }
 
+  // ---- 時計(マストヘッドの UTC 表示) ---------------------------------------
+
+  function startClock() {
+    const el = $('clock');
+    if (!el) return;
+    const tick = () => {
+      el.textContent = `UTC ${new Date().toISOString().slice(11, 19)}`;
+    };
+    tick();
+    setInterval(tick, 1000);
+  }
+
   // ---- 起動 ------------------------------------------------------------------
 
   function start() {
@@ -295,6 +327,7 @@
     IPTVPlayer.init({ onClose: clearHash });
     bindEvents();
     initObserver();
+    startClock();
     loadData();
     // テスト・デバッグ用フック
     window.__IPTV__ = { state };

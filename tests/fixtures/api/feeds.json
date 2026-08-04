@@ -3,5 +3,6 @@
   {"channel":"TestMulti.jp","id":"SD","name":"SD","alt_names":[],"is_main":true,"broadcast_area":["c/JP"],"timezones":["Asia/Tokyo"],"languages":["jpn"],"format":"1080p"},
   {"channel":"USNews.us","id":"HD","name":"HD","alt_names":[],"is_main":true,"broadcast_area":["c/US"],"timezones":["America/New_York"],"languages":["eng"],"format":"1080p"},
   {"channel":"HttpOnly.ru","id":"SD","name":"SD","alt_names":[],"is_main":true,"broadcast_area":["c/RU"],"timezones":["Europe/Moscow"],"languages":["rus"],"format":"360p"},
-  {"channel":"ProgressiveTV.us","id":"SD","name":"SD","alt_names":[],"is_main":true,"broadcast_area":["c/US"],"timezones":["America/New_York"],"languages":["eng"],"format":"240p"}
+  {"channel":"ProgressiveTV.us","id":"SD","name":"SD","alt_names":[],"is_main":true,"broadcast_area":["c/US"],"timezones":["America/New_York"],"languages":["eng"],"format":"240p"},
+  {"channel":"ZZDashTV.us","id":"SD","name":"SD","alt_names":[],"is_main":true,"broadcast_area":["c/US"],"timezones":["America/New_York"],"languages":["eng"],"format":"1080p"}
 ]

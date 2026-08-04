@@ -7,7 +7,8 @@
  * 全滅したらエラーパネル(URLコピー / .m3u ダウンロード / 公式サイト)を表示する。
  */
 const IPTVPlayer = (() => {
-  const DASH_CDN = 'https://cdn.jsdelivr.net/npm/dashjs@5/dist/modern/umd/dash.all.min.js';
+  const DASH_CDN = 'https://cdn.jsdelivr.net/npm/dashjs@5.2.0/dist/modern/umd/dash.all.min.js';
+  const DASH_SRI = 'sha384-DUqWPzOl/i7/DGF7SBoe4NrlZOMxxomlJsg3X0daS5SBeFxco3dmwWQPFr2oauXn';
   const WATCHDOG_MS = 25000;
 
   let dom = null;
@@ -19,10 +20,12 @@ const IPTVPlayer = (() => {
   let tried = new Set();
   let failReasons = new Map();
   let mediaRecoveries = 0;
+  let networkRecoveries = 0;
   let watchdog = 0;
   let playToken = 0;
   let lastFocus = null;
   let onCloseCallback = null;
+  let m3uUrl = null;
 
   // ---- URL 分類 -------------------------------------------------------------
 
@@ -73,7 +76,7 @@ const IPTVPlayer = (() => {
     dom.video.addEventListener('playing', () => {
       clearWatchdog();
       const s = currentStream();
-      setStatus('▶ 再生中' + (s && s.quality ? ` (${s.quality})` : ''), 'ok');
+      setStatus('● 再生中' + (s && s.quality ? ` (${s.quality})` : ''), 'ok');
     });
   }
 
@@ -100,10 +103,12 @@ const IPTVPlayer = (() => {
       dash = null;
     }
     dom.video.onerror = null;
+    dom.video.onloadedmetadata = null;
     dom.video.pause();
     dom.video.removeAttribute('src');
     dom.video.load();
     mediaRecoveries = 0;
+    networkRecoveries = 0;
   }
 
   function clearWatchdog() {
@@ -136,6 +141,8 @@ const IPTVPlayer = (() => {
     dom.meta.textContent = metaParts.join(' ・ ');
     dom.error.hidden = true;
     dom.unmute.hidden = true;
+    // 前回の自動再生フォールバックで残ったミュート状態を持ち越さない
+    dom.video.muted = false;
 
     renderVariants();
     if (!dom.modal.open) dom.modal.showModal();
@@ -151,6 +158,10 @@ const IPTVPlayer = (() => {
     teardown();
     entry = null;
     currentIndex = -1;
+    if (m3uUrl) {
+      URL.revokeObjectURL(m3uUrl);
+      m3uUrl = null;
+    }
     if (lastFocus && lastFocus.focus) lastFocus.focus();
     if (onCloseCallback) onCloseCallback();
   }
@@ -172,7 +183,10 @@ const IPTVPlayer = (() => {
       if (s.label) parts.push(s.label);
       if (!IPTVData.isHttps(s.url)) parts.push('HTTP');
       btn.textContent = parts.join(' ');
-      if (s.userAgent || s.referrer) btn.title = '特定の User-Agent / Referrer を要求する配信のため、ブラウザでは失敗する可能性があります';
+      if (s.userAgent || s.referrer) {
+        btn.dataset.baseTitle = '特定の User-Agent / Referrer を要求する配信のため、ブラウザでは失敗する可能性があります';
+        btn.title = btn.dataset.baseTitle;
+      }
       btn.addEventListener('click', () => {
         autoAdvance = false;
         play(i, false);
@@ -186,8 +200,18 @@ const IPTVPlayer = (() => {
     const btns = dom.variants.querySelectorAll('.variant-btn');
     btns.forEach((btn) => {
       const i = Number(btn.dataset.index);
-      btn.classList.toggle('active', i === currentIndex);
-      btn.classList.toggle('failed', failReasons.has(i));
+      const active = i === currentIndex;
+      const failed = failReasons.has(i);
+      btn.classList.toggle('active', active);
+      btn.classList.toggle('failed', failed);
+      btn.setAttribute('aria-pressed', String(active));
+      if (failed) {
+        btn.setAttribute('aria-disabled', 'true');
+        btn.title = `再生失敗: ${failReasons.get(i)}`;
+      } else {
+        btn.removeAttribute('aria-disabled');
+        btn.title = btn.dataset.baseTitle || '';
+      }
     });
   }
 
@@ -236,7 +260,9 @@ const IPTVPlayer = (() => {
       dom.unmute.hidden = false;
       dom.video.play().catch(() => {
         if (token !== playToken) return;
-        setStatus('▶ ボタンを押すと再生を開始します');
+        // ユーザー操作待ちの正当な停止なのでウォッチドッグは止める
+        clearWatchdog();
+        setStatus('再生ボタンを押すと開始します');
       });
     });
   }
@@ -265,13 +291,18 @@ const IPTVPlayer = (() => {
       });
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         if (token !== playToken) return;
-        clearWatchdog();
+        // マニフェスト取得後もセグメントが死んでいる配信があるため、
+        // 'playing' が発火するまでウォッチドッグを張り直して監視を続ける
+        startWatchdog(token);
         attemptAutoplay(token);
       });
       hls.attachMedia(dom.video);
       hls.loadSource(url);
     } else if (dom.video.canPlayType('application/vnd.apple.mpegurl')) {
       playNative(url, token);
+    } else if (!window.Hls && window.MediaSource) {
+      // ブラウザは対応しているのに hls.js 自体が読み込めていない(CDN 障害など)
+      fail('プレイヤーライブラリ (hls.js) を読み込めませんでした — ページを再読み込みしてください');
     } else {
       fail('このブラウザは HLS 再生に対応していません');
     }
@@ -290,6 +321,13 @@ const IPTVPlayer = (() => {
       return;
     }
     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+      // 一度は再生できていた配信が途中で切れた場合は 1 回だけ再接続を試す
+      if (networkRecoveries < 1 && dom.video.currentTime > 0 && details.indexOf('manifest') !== 0) {
+        networkRecoveries++;
+        setStatus('ネットワークエラー — 再接続しています…', 'warn');
+        startWatchdog(playToken);
+        try { hls.startLoad(); return; } catch (e) { /* fallthrough */ }
+      }
       const code = data.response && data.response.code;
       if (code === 403) fail('アクセス拒否 (403) — 地域制限の可能性');
       else if (code === 404) fail('配信が見つかりません (404)');
@@ -308,12 +346,13 @@ const IPTVPlayer = (() => {
       if (token !== playToken) return;
       fail('接続できません(配信停止 / 地域制限の可能性)');
     };
-    dom.video.src = url;
-    dom.video.addEventListener('loadedmetadata', () => {
+    // teardown() で確実に外せるよう、プロパティ代入でリスナーを登録する
+    dom.video.onloadedmetadata = () => {
       if (token !== playToken) return;
-      clearWatchdog();
+      startWatchdog(token);
       attemptAutoplay(token);
-    }, { once: true });
+    };
+    dom.video.src = url;
   }
 
   let dashLoading = null;
@@ -324,6 +363,8 @@ const IPTVPlayer = (() => {
     dashLoading = new Promise((resolve, reject) => {
       const s = document.createElement('script');
       s.src = DASH_CDN;
+      s.integrity = DASH_SRI;
+      s.crossOrigin = 'anonymous';
       s.onload = resolve;
       s.onerror = () => {
         dashLoading = null;
@@ -346,7 +387,8 @@ const IPTVPlayer = (() => {
       });
       dash.on('playbackMetaDataLoaded', () => {
         if (token !== playToken) return;
-        clearWatchdog();
+        startWatchdog(token);
+        attemptAutoplay(token);
       });
       dash.initialize(dom.video, url, true);
     }).catch((err) => {
@@ -386,27 +428,29 @@ const IPTVPlayer = (() => {
     const copyBtn = document.createElement('button');
     copyBtn.type = 'button';
     copyBtn.className = 'action-btn';
-    copyBtn.textContent = '📋 ストリーム URL をコピー';
+    copyBtn.textContent = 'ストリーム URL をコピー';
     copyBtn.addEventListener('click', () => {
       const s = currentStream() || entry.streams[0];
       copyText(s.url).then((ok) => {
         copyBtn.textContent = ok ? '✓ コピーしました' : 'コピーに失敗しました';
-        setTimeout(() => { copyBtn.textContent = '📋 ストリーム URL をコピー'; }, 2000);
+        setTimeout(() => { copyBtn.textContent = 'ストリーム URL をコピー'; }, 2000);
       });
     });
     dom.errorActions.appendChild(copyBtn);
 
     const m3uBtn = document.createElement('a');
     m3uBtn.className = 'action-btn';
-    m3uBtn.textContent = '⬇ .m3u をダウンロード (VLC などで再生)';
-    m3uBtn.href = URL.createObjectURL(new Blob([buildM3u(entry)], { type: 'audio/x-mpegurl' }));
+    m3uBtn.textContent = '.m3u をダウンロード(VLC 用)';
+    if (m3uUrl) URL.revokeObjectURL(m3uUrl);
+    m3uUrl = URL.createObjectURL(new Blob([buildM3u(entry)], { type: 'audio/x-mpegurl' }));
+    m3uBtn.href = m3uUrl;
     m3uBtn.download = `${entry.name.replace(/[\\/:*?"<>|]/g, '_')}.m3u`;
     dom.errorActions.appendChild(m3uBtn);
 
     if (entry.website) {
       const site = document.createElement('a');
       site.className = 'action-btn';
-      site.textContent = '🌐 公式サイトを開く';
+      site.textContent = '公式サイトを開く';
       site.href = entry.website;
       site.target = '_blank';
       site.rel = 'noopener noreferrer';

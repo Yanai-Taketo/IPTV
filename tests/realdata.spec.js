@@ -103,3 +103,29 @@ test.describe('実データスナップショット(4 万チャンネル)', () =
       .toBeGreaterThan(before);
   });
 });
+
+test.describe('実データ + ワイドビューポート', () => {
+  test.skip(!AVAILABLE, 'tests/fixtures/realdata/ にスナップショットが無いためスキップ');
+  test.use({ viewport: { width: 3000, height: 2000 } });
+
+  test('広い画面でも最初のチャンクで止まらず画面が埋まるまで描画される', async ({ page }) => {
+    test.slow();
+    await page.route('https://iptv-org.github.io/api/*.json', (route) => {
+      const name = route.request().url().split('/').pop();
+      const file = path.join(REALDATA, name);
+      if (fs.existsSync(file)) {
+        return route.fulfill({ path: file, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' } });
+      }
+      return route.fulfill({ status: 404, contentType: 'application/json', body: '[]' });
+    });
+    await page.route('https://cdn.jsdelivr.net/npm/hls.js@*/dist/hls.min.js', (route) =>
+      route.fulfill({ path: path.join(__dirname, 'fixtures', 'vendor', 'hls.min.js'), contentType: 'application/javascript', headers: { 'access-control-allow-origin': '*' } })
+    );
+    await page.goto('/');
+    await expect(page.locator('#app')).toBeVisible({ timeout: 60000 });
+    // 3000x2000 ではビューポート + 観測マージンを満たすまで複数チャンク描画される
+    await expect
+      .poll(() => page.locator('.card').count(), { timeout: 15000 })
+      .toBeGreaterThan(120);
+  });
+});

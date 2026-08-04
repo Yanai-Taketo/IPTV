@@ -18,6 +18,15 @@ const PNG_1X1 = Buffer.from(
  *  - dead.fixture.test / insecure.fixture.test → 接続拒否(死んだ配信のシミュレーション)
  */
 async function routeApi(page) {
+  // キャッチオール: フィクスチャで扱わない外部リクエストは遮断して「漏れ」を顕在化させる。
+  // Playwright は後から登録したルートを先に評価するため、最初に登録しておくと
+  // 以降の個別ルートが優先され、どれにも一致しないものだけがここに落ちる。
+  await page.route('**/*', (route) => {
+    const host = new URL(route.request().url()).hostname;
+    if (host === '127.0.0.1' || host === 'localhost') return route.continue();
+    return route.abort();
+  });
+
   await page.route('https://iptv-org.github.io/api/*.json', (route) => {
     const name = route.request().url().split('/').pop();
     const file = path.join(FIXTURES, 'api', name);

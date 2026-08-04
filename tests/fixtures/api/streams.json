@@ -6,5 +6,6 @@
   {"channel":"AdultChan.us","feed":"SD","title":"Adult","url":"https://fixture.test/hls/stream.m3u8","quality":"720p","label":null,"user_agent":null,"referrer":null},
   {"channel":"HttpOnly.ru","feed":"SD","title":"Http Only","url":"http://insecure.fixture.test/live.m3u8","quality":"360p","label":null,"user_agent":null,"referrer":null},
   {"channel":null,"feed":null,"title":"Orphan Stream","url":"https://fixture.test/hls/stream.m3u8","quality":"720p","label":null,"user_agent":null,"referrer":null},
-  {"channel":"ProgressiveTV.us","feed":"SD","title":"Progressive TV","url":"https://fixture.test/media/test.webm","quality":"240p","label":null,"user_agent":null,"referrer":null}
+  {"channel":"ProgressiveTV.us","feed":"SD","title":"Progressive TV","url":"https://fixture.test/media/test.webm","quality":"240p","label":null,"user_agent":null,"referrer":null},
+  {"channel":"ZZDashTV.us","feed":"SD","title":"ZZ Dash TV","url":"https://fixture.test/dash/manifest.mpd","quality":"1080p","label":null,"user_agent":null,"referrer":null}
 ]
