@@ -2,6 +2,22 @@
 
 **日付**: 2026-08-04 / **調査ブランチ**: `claude/epg-api-implementation-wr635a`
 
+> **進捗(2026-08-04, ブランチ `claude/top-5-features-6svz13`)**: トップ 5 を全て実装済み
+> (各機能 1 コミット + ハーメチックテスト、計 85 テスト通過)。
+>
+> 1. ✅ Playwright テスト CI 化 — `.github/workflows/test.yml` + http-server devDependency 化
+> 2. ✅ EPG ブロックサイト除外 — `EXCLUDED_SITES`(9 サイト)+ `--exclude-sites`。
+>    main 反映後の初回グラブ(epg-lib.mjs の push で自動起動)で再選定される
+> 3. ✅ お気に入り + 最近見た履歴 — `assets/js/store.js`(localStorage 共有基盤)。
+>    カード右上トグル / お気に入りのみフィルタ / 最近見た順ソート(playing イベント記録)
+> 4. ✅ テレビ欄タイムライン — 「テレビ欄で見る」トグル。今〜+6h・フィルタ適用行のみ・
+>    遅延チャンク描画。実データ(913ch EPG)でスモーク確認済み
+> 5. ✅ 地域フィルタ + 現地時刻 — regions.json(WW/UN 除外・フラット 40 地域)+
+>    feeds.json timezones(カード/プレイヤー表示・「現地 19–23 時」フィルタ・tz 別 Intl キャッシュ)
+>
+> 未着手の注意点: main 反映後に test.yml の初回実行と grab-epg の再選定結果
+> (excluded-site-only 件数・カバレッジ増)を実環境で確認すること。
+
 EPG 実装(docs/epg-design.md)完了後の「他に追加できそうな機能」の調査結果と、
 次セッションが作業を始めるために必要な現状情報をまとめる。
 
