@@ -60,6 +60,7 @@
         お気に入りのみ
       </label>
       <button id="shuffle-btn" type="button" class="action-btn">ランダム選局</button>
+      <button id="view-toggle" type="button" class="action-btn" aria-pressed="false" hidden>テレビ欄で見る</button>
     </div>
   </header>
 
@@ -84,6 +85,8 @@
         <span id="grid-head-note">すべての公開チャンネル</span>
       </div>
       <div id="grid" class="grid"></div>
+      <div id="timeline" class="timeline" hidden></div>
+      <p id="timeline-empty" class="center-screen" hidden>この時間帯に表示できる番組がありません(番組表のあるチャンネルが対象です)</p>
       <p id="empty" class="center-screen" hidden>条件に一致するチャンネルがありません</p>
       <div id="sentinel" class="sentinel" aria-hidden="true"></div>
     </div>

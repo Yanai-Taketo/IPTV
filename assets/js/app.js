@@ -8,6 +8,9 @@
   const CHUNK_SIZE = 60;
   const OBSERVER_MARGIN = 600;
   const PAGE_HTTPS = location.protocol === 'https:';
+  // テレビ欄(タイムライン)の時間窓。全番組・全期間を描くと行数×番組数が
+  // 膨れ上がるため「今〜+6 時間」に固定する(docs/next-features.md §3.2)
+  const TIMELINE_HOURS = 6;
 
   const state = {
     data: null,
@@ -20,7 +23,10 @@
     epgOnly: false,
     favOnly: false,
     sort: 'name',
+    view: 'cards', // 'cards' | 'timeline'(テレビ欄)
     filtered: [],
+    timelineRows: [], // フィルタ適用後、時間窓内に番組があるエントリのみ
+    timelineStart: 0, // 時間窓の開始(UTC 秒、時境界に切り下げ)
     rendered: 0,
     entriesByKey: null, // 番組表の定期更新でカード → エントリを引くための索引
     epgCount: 0,
@@ -56,9 +62,12 @@
       proxyStatus: $('proxy-status'),
       stats: $('stats'),
       grid: $('grid'),
+      timeline: $('timeline'),
+      timelineEmpty: $('timeline-empty'),
       sentinel: $('sentinel'),
       empty: $('empty'),
       shuffle: $('shuffle-btn'),
+      viewToggle: $('view-toggle'),
     };
   }
 
@@ -151,6 +160,11 @@
       dom.checkedOnlyLabel.hidden = true;
     }
 
+    // 番組表(EPG)データがある場合のみテレビ欄ビューを提供する
+    dom.viewToggle.hidden = !(state.epgCount > 0);
+    if (state.epgCount === 0) state.view = 'cards';
+    updateViewToggle();
+
     // 番組表(EPG)データがある場合のみフィルタと取得時刻を表示
     if (state.epgCount > 0) {
       dom.epgOnlyLabel.hidden = false;
@@ -210,10 +224,19 @@
     }
 
     dom.stats.textContent = `${state.filtered.length.toLocaleString('ja-JP')} / ${d.totals.channels.toLocaleString('ja-JP')} チャンネル`;
-    dom.empty.hidden = state.filtered.length > 0;
 
     dom.grid.textContent = '';
+    dom.timeline.textContent = '';
+    tlBody = null;
     state.rendered = 0;
+    if (state.view === 'timeline') {
+      prepareTimeline();
+    } else {
+      dom.grid.hidden = false;
+      dom.timeline.hidden = true;
+      dom.timelineEmpty.hidden = true;
+      dom.empty.hidden = state.filtered.length > 0;
+    }
     renderChunk();
   }
 
@@ -403,19 +426,153 @@
     }
   }
 
+  // ---- テレビ欄(タイムライン)ビュー ----------------------------------------
+  //
+  // フィルタ適用後のエントリのうち、時間窓(今〜+TIMELINE_HOURS)に番組がある
+  // 行だけを描画する。行はカード一覧と同じ遅延チャンク描画に乗せる。
+
+  let tlBody = null; // 横スクロール内の実描画コンテナ(applyFilters ごとに作り直す)
+
+  function updateViewToggle() {
+    const on = state.view === 'timeline';
+    dom.viewToggle.setAttribute('aria-pressed', String(on));
+    dom.viewToggle.textContent = on ? 'カード一覧に戻る' : 'テレビ欄で見る';
+  }
+
+  function timelineWindow() {
+    const start = state.timelineStart;
+    return { start, span: TIMELINE_HOURS * 3600, end: start + TIMELINE_HOURS * 3600 };
+  }
+
+  function prepareTimeline() {
+    // 時刻目盛りが揃うよう、窓の開始は時境界に切り下げる
+    state.timelineStart = Math.floor(Date.now() / 1000 / 3600) * 3600;
+    const w = timelineWindow();
+    state.timelineRows = state.filtered.filter((e) => {
+      const ch = IPTVEpg.get(e.key);
+      return ch && ch.p.some((p) => p[0] < w.end && p[0] + p[1] > w.start);
+    });
+
+    dom.grid.hidden = true;
+    dom.empty.hidden = true;
+    dom.timeline.hidden = false;
+    dom.timelineEmpty.hidden = state.timelineRows.length > 0;
+
+    tlBody = document.createElement('div');
+    tlBody.className = 'tl-body';
+
+    const head = document.createElement('div');
+    head.className = 'tl-head';
+    const corner = document.createElement('div');
+    corner.className = 'tl-corner';
+    corner.textContent = 'CHANNEL ・ 番組';
+    head.appendChild(corner);
+    const scale = document.createElement('div');
+    scale.className = 'tl-scale';
+    scale.setAttribute('aria-hidden', 'true');
+    for (let h = 0; h < TIMELINE_HOURS; h++) {
+      const tick = document.createElement('span');
+      tick.className = 'tl-tick';
+      tick.style.left = `${((h / TIMELINE_HOURS) * 100).toFixed(4)}%`;
+      tick.textContent = IPTVEpg.fmtTime(w.start + h * 3600);
+      scale.appendChild(tick);
+    }
+    head.appendChild(scale);
+    tlBody.appendChild(head);
+
+    const nowline = document.createElement('i');
+    nowline.className = 'tl-nowline';
+    nowline.setAttribute('aria-hidden', 'true');
+    tlBody.appendChild(nowline);
+
+    dom.timeline.appendChild(tlBody);
+    updateTimelineNow();
+  }
+
+  function createTimelineRow(entry) {
+    const w = timelineWindow();
+    const nowSec = Math.floor(Date.now() / 1000);
+    const row = document.createElement('div');
+    row.className = 'tl-row';
+    row.dataset.key = entry.key;
+
+    const ch = document.createElement('button');
+    ch.type = 'button';
+    ch.className = 'tl-ch';
+    ch.title = `${entry.name} を再生`;
+    const name = document.createElement('span');
+    name.className = 'tl-ch-name';
+    name.textContent = entry.name;
+    ch.appendChild(name);
+    const meta = document.createElement('span');
+    meta.className = 'tl-ch-meta';
+    meta.textContent = `${entry.flag} ${entry.countryName}`;
+    ch.appendChild(meta);
+    ch.addEventListener('click', () => openEntry(entry));
+    row.appendChild(ch);
+
+    const track = document.createElement('div');
+    track.className = 'tl-track';
+    for (const [start, dur, title] of IPTVEpg.get(entry.key).p) {
+      const end = start + dur;
+      if (end <= w.start || start >= w.end) continue;
+      const clipStart = Math.max(start, w.start);
+      const clipEnd = Math.min(end, w.end);
+      const block = document.createElement('button');
+      block.type = 'button';
+      block.className = 'tl-prog';
+      block.dataset.start = String(start);
+      block.dataset.end = String(end);
+      if (start <= nowSec && nowSec < end) block.classList.add('tl-current');
+      block.style.left = `${(((clipStart - w.start) / w.span) * 100).toFixed(4)}%`;
+      block.style.width = `${(((clipEnd - clipStart) / w.span) * 100).toFixed(4)}%`;
+      block.title = `${IPTVEpg.fmtRange(start, dur)} ${title}`;
+      const t = document.createElement('span');
+      t.className = 'tl-prog-title';
+      t.textContent = title;
+      block.appendChild(t);
+      const time = document.createElement('span');
+      time.className = 'tl-prog-time';
+      time.textContent = IPTVEpg.fmtTime(start);
+      block.appendChild(time);
+      block.addEventListener('click', () => openEntry(entry));
+      track.appendChild(block);
+    }
+    row.appendChild(track);
+    return row;
+  }
+
+  /** 現在時刻ライン(--now-pct)と「放送中」ハイライトを現在時刻に追従させる */
+  function updateTimelineNow() {
+    if (state.view !== 'timeline' || !tlBody) return;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const w = timelineWindow();
+    const pct = Math.max(0, Math.min(1, (nowSec - w.start) / w.span));
+    tlBody.style.setProperty('--now-pct', pct.toFixed(4));
+    for (const block of tlBody.querySelectorAll('.tl-prog')) {
+      const s = Number(block.dataset.start);
+      const e = Number(block.dataset.end);
+      block.classList.toggle('tl-current', s <= nowSec && nowSec < e);
+    }
+  }
+
   function renderChunk() {
+    const timeline = state.view === 'timeline';
+    const list = timeline ? state.timelineRows : state.filtered;
+    const container = timeline ? tlBody : dom.grid;
+    if (!container) return;
     const frag = document.createDocumentFragment();
-    const end = Math.min(state.rendered + CHUNK_SIZE, state.filtered.length);
+    const end = Math.min(state.rendered + CHUNK_SIZE, list.length);
     for (let i = state.rendered; i < end; i++) {
-      frag.appendChild(createCard(state.filtered[i]));
+      frag.appendChild(timeline ? createTimelineRow(list[i]) : createCard(list[i]));
     }
     state.rendered = end;
-    dom.grid.appendChild(frag);
-    dom.sentinel.hidden = state.rendered >= state.filtered.length;
+    container.appendChild(frag);
+    dom.sentinel.hidden = state.rendered >= list.length;
     // IntersectionObserver は交差状態の「変化」しか通知しないため、
     // 広い画面で 1 チャンクが番兵を観測圏外へ押し出せない場合は続けて描画する
     if (
-      state.rendered < state.filtered.length &&
+      state.rendered < list.length &&
       dom.sentinel.getBoundingClientRect().top < window.innerHeight + OBSERVER_MARGIN
     ) {
       requestAnimationFrame(renderChunk);
@@ -424,7 +581,8 @@
 
   function initObserver() {
     observer = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting) && state.rendered < state.filtered.length) {
+      const list = state.view === 'timeline' ? state.timelineRows : state.filtered;
+      if (entries.some((e) => e.isIntersecting) && state.rendered < list.length) {
         renderChunk();
       }
     }, { rootMargin: `${OBSERVER_MARGIN}px` });
@@ -489,6 +647,11 @@
       const entry = state.filtered[Math.floor(Math.random() * state.filtered.length)];
       openEntry(entry);
     });
+    dom.viewToggle.addEventListener('click', () => {
+      state.view = state.view === 'timeline' ? 'cards' : 'timeline';
+      updateViewToggle();
+      applyFilters();
+    });
     dom.retry.addEventListener('click', loadData);
     window.addEventListener('hashchange', () => {
       if (state.data) openFromHash();
@@ -519,7 +682,10 @@
     bindEvents();
     initObserver();
     startClock();
-    setInterval(refreshEpgCards, 30000);
+    setInterval(() => {
+      refreshEpgCards();
+      updateTimelineNow();
+    }, 30000);
     loadData();
     // テスト・デバッグ用フック
     window.__IPTV__ = { state };
