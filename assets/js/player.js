@@ -195,14 +195,7 @@ const IPTVPlayer = (() => {
 
     dom.flag.textContent = entry.flag || '🌐';
     dom.title.textContent = entry.name;
-    const metaParts = [entry.countryName];
-    if (entry.timezone) {
-      const t = IPTVData.localTime(entry.timezone, new Date());
-      if (t) metaParts.push(`現地 ${t}`);
-    }
-    if (entry.network) metaParts.push(entry.network);
-    if (entry.closed) metaParts.push(`閉局: ${entry.closed}`);
-    dom.meta.textContent = metaParts.join(' ・ ');
+    renderMeta();
     dom.error.hidden = true;
     dom.unmute.hidden = true;
     // 前回の自動再生フォールバックで残ったミュート状態を持ち越さない
@@ -292,9 +285,25 @@ const IPTVPlayer = (() => {
   const EPG_REFRESH_MS = 30000;
   let epgTimer = 0;
 
+  /** ヘッダのメタ情報。現地時刻を含むため定期的に描き直す */
+  function renderMeta() {
+    if (!entry) return;
+    const parts = [entry.countryName];
+    if (entry.timezone) {
+      const t = IPTVData.localTime(entry.timezone, new Date());
+      if (t) parts.push(`現地 ${t}`);
+    }
+    if (entry.network) parts.push(entry.network);
+    if (entry.closed) parts.push(`閉局: ${entry.closed}`);
+    dom.meta.textContent = parts.join(' ・ ');
+  }
+
   function startEpgTimer() {
     stopEpgTimer();
-    epgTimer = setInterval(renderEpg, EPG_REFRESH_MS);
+    epgTimer = setInterval(() => {
+      renderMeta();
+      renderEpg();
+    }, EPG_REFRESH_MS);
   }
 
   function stopEpgTimer() {

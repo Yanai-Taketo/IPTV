@@ -2,7 +2,7 @@
   "generated_at": "2026-08-04T10:00:00Z",
   "days": 2,
   "shard_count": 4,
-  "counts": { "channels": 3, "programs": 6, "sites": 3 },
+  "counts": { "channels": 4, "programs": 8, "sites": 4 },
   "channels": {
     "NHKWorldJapan.jp": {
       "site": "i.mjh.nz",
@@ -20,7 +20,8 @@
       "feed": "SD",
       "shard": 1,
       "p": [
-        [1785848400, 3600, "Evening Show"]
+        [1785848400, 3600, "Evening Show"],
+        [1785864600, 7200, "Border Crossing"]
       ]
     },
     "HttpOnly.ru": {
@@ -29,6 +30,14 @@
       "shard": 0,
       "p": [
         [1785830400, 3600, "Old Show"]
+      ]
+    },
+    "ZZDashTV.us": {
+      "site": "tvpassport.com",
+      "feed": "SD",
+      "shard": 3,
+      "p": [
+        [1785868200, 3600, "After Window"]
       ]
     }
   }

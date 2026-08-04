@@ -21,6 +21,11 @@ module.exports = defineConfig({
     baseURL: 'http://127.0.0.1:4173',
     browserName: 'chromium',
     headless: true,
+    // 時刻・数値の表示は toLocale*() 経由でブラウザのタイムゾーン / ロケールに依存する。
+    // 実行ホストの設定でテストが揺れないよう明示的に固定する
+    // (page.clock は時刻を止めるがタイムゾーンまでは固定しない)
+    timezoneId: 'UTC',
+    locale: 'ja-JP',
     launchOptions: { args: ['--autoplay-policy=no-user-gesture-required'] },
   },
   projects: [

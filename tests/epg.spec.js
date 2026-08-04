@@ -11,7 +11,9 @@
  *       11:30–12:30 World News Today(放送中) / 12:30–13:00 Asia Insight
  *       13:00–14:30 Documentary Hour
  *   - Multi Stream TV (shard 1): 13:00–14:00 Evening Show(現在番組なし・次番組のみ)
+ *       17:30–19:30 Border Crossing(テレビ欄の窓終端 18:00 をまたぐ)
  *   - Http Only TV (shard 0): 08:00–09:00 Old Show(全て終了済み = 提供期間外)
+ *   - ZZ Dash TV (shard 3): 18:30–19:30 After Window(窓より後のみ・詳細シャード無し)
  *   - その他のチャンネル: 番組表なし
  */
 const path = require('path');
@@ -78,9 +80,9 @@ test.describe('番組表(EPG)連携', () => {
 
   test('番組表ありのみフィルタ', async ({ page }) => {
     await expect(page.locator('#epg-only-label')).toBeVisible();
-    await expect(page.locator('#epg-only-label')).toContainText('番組表ありのみ (3)');
+    await expect(page.locator('#epg-only-label')).toContainText('番組表ありのみ (4)');
     await page.check('#epg-only');
-    await expect(page.locator('.card')).toHaveCount(3);
+    await expect(page.locator('.card')).toHaveCount(4);
     await expect(page.locator('.card', { hasText: 'US News Channel' })).toHaveCount(0);
   });
 

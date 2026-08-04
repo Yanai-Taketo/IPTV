@@ -5,8 +5,9 @@
  * EPG フィクスチャ(tests/epg.spec.js 参照)を 2026-08-04T12:00:00Z の凍結時刻で使う。
  * 時間窓は 12:00(時境界に切り下げ)→ 18:00 の 6 時間:
  *   - NHK World Japan: 11:30–12:30(放送中・窓頭で切り詰め)/ 12:30–13:00 / 13:00–14:30
- *   - Multi Stream TV: 13:00–14:00
- *   - Http Only TV: 08:00–09:00(窓外 → 行ごと出ない)
+ *   - Multi Stream TV: 13:00–14:00 / 17:30–19:30(窓終端 18:00 をまたぐ)
+ *   - Http Only TV: 08:00–09:00(窓より前 → 行ごと出ない)
+ *   - ZZ Dash TV: 18:30–19:30(窓より後 → 行ごと出ない)
  */
 const path = require('path');
 const { test, expect } = require('@playwright/test');
@@ -76,6 +77,19 @@ test.describe('テレビ欄(タイムライン)ビュー', () => {
     await expect(doc).toHaveAttribute('style', /width:\s*25(\.0+)?%/);
   });
 
+  test('窓の終端: またぐ番組は 18:00 で切り詰め、窓より後だけの行は出ない', async ({ page }) => {
+    await page.click('#view-toggle');
+
+    // Multi Stream TV の 17:30–19:30 は窓終端で切られ、left 11/12・幅 1/12
+    const multi = page.locator('.tl-row', { hasText: 'Multi Stream TV' });
+    const crossing = multi.locator('.tl-prog', { hasText: 'Border Crossing' });
+    await expect(crossing).toHaveAttribute('style', /left:\s*91\.66/);
+    await expect(crossing).toHaveAttribute('style', /width:\s*8\.33/);
+
+    // 番組表はあるが窓より後(18:30–)しか無いチャンネルは行ごと出ない
+    await expect(page.locator('.tl-row', { hasText: 'ZZ Dash TV' })).toHaveCount(0);
+  });
+
   test('検索フィルタがテレビ欄の行にも適用される', async ({ page }) => {
     await page.click('#view-toggle');
     await page.fill('#search', 'NHK');
@@ -111,6 +125,45 @@ test.describe('テレビ欄(タイムライン)ビュー', () => {
     await expect(nhk.locator('.tl-prog', { hasText: 'World News Today' })).not.toHaveClass(/tl-current/);
     // 31 分 / 6 時間 ≒ 8.6%
     await expect(page.locator('.tl-body')).toHaveAttribute('style', /--now-pct:\s*0\.086/);
+  });
+});
+
+test.describe('テレビ欄(正時でない時刻・窓の作り直し)', () => {
+  // 12:34 に凍結: 窓は時境界へ切り下げて 12:00–18:00、現在位置は 34/360 ≒ 9.4%
+  const ODD = new Date('2026-08-04T12:34:00Z');
+
+  test.beforeEach(async ({ page }) => {
+    await page.clock.install({ time: ODD });
+    await page.clock.pauseAt(ODD);
+    await routeApi(page);
+    await routeEpg(page);
+    await page.goto('/');
+    await expect(page.locator('#app')).toBeVisible();
+    await page.click('#view-toggle');
+  });
+
+  test('窓の開始は時境界に切り下げられ、現在時刻ラインは時刻に比例する', async ({ page }) => {
+    await expect(page.locator('.tl-tick').first()).toHaveText('12:00');
+    await expect(page.locator('.tl-body')).toHaveAttribute('style', /--now-pct:\s*0\.094/);
+
+    // 12:34 時点の放送中は Asia Insight(12:30–13:00)。終了済みの番組も窓内なら描かれる
+    const nhk = page.locator('.tl-row', { hasText: 'NHK World Japan' });
+    await expect(nhk.locator('.tl-prog', { hasText: 'Asia Insight' })).toHaveClass(/tl-current/);
+    await expect(nhk.locator('.tl-prog', { hasText: 'World News Today' })).toBeVisible();
+  });
+
+  test('時境界をまたぐと窓が作り直され、先読み 6 時間を保つ', async ({ page }) => {
+    await expect(page.locator('.tl-tick').first()).toHaveText('12:00');
+
+    // 12:34 → 13:05(定期更新は 30 秒間隔なので窓の作り直しが発火する)
+    await page.clock.fastForward('31:00');
+    await expect(page.locator('.tl-tick').first()).toHaveText('13:00');
+    await expect(page.locator('.tl-tick').last()).toHaveText('18:00');
+    // 新しい窓 13:00–19:00 では 17:30–19:30 の番組も現れる
+    await expect(
+      page.locator('.tl-row', { hasText: 'Multi Stream TV' }).locator('.tl-prog', { hasText: 'Border Crossing' })
+    ).toBeVisible();
+    await expect(page.locator('.tl-body')).toHaveAttribute('style', /--now-pct:\s*0\.013/);
   });
 });
 

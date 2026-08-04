@@ -290,6 +290,10 @@
     card.dataset.key = entry.key;
     card.setAttribute('role', 'button');
     card.tabIndex = 0;
+    // 明示的な名前を与えないと、role=button の名前が子孫(先頭のお気に入り
+    // トグルの「お気に入り」やロゴ代替文字)から合成され、支援技術には
+    // 全カードがお気に入り済みのように読み上げられてしまう
+    card.setAttribute('aria-label', `${entry.name} ・ ${entry.countryName}`);
 
     const fav = document.createElement('button');
     fav.type = 'button';
@@ -301,7 +305,15 @@
       updateFavButton(fav, on);
       updateFavLabel();
       // お気に入りフィルタ適用中は結果が変わるため再描画(通常時は並びを乱さない)
-      if (state.favOnly) applyFilters();
+      if (state.favOnly) {
+        // 全カードを作り直すとフォーカス中のトグルごと消えるため、
+        // 描画後に同じ位置(末尾なら最後)のトグルへフォーカスを戻す
+        const pos = [...dom.grid.querySelectorAll('.card')].indexOf(card);
+        applyFilters();
+        const toggles = dom.grid.querySelectorAll('.fav-btn');
+        if (toggles.length) toggles[Math.min(pos, toggles.length - 1)].focus();
+        else dom.favOnly.focus(); // 残り 0 件ならフィルタ自体へ戻す
+      }
     });
     card.appendChild(fav);
 
@@ -594,6 +606,23 @@
     return row;
   }
 
+  /**
+   * 時境界をまたいだら時間窓を作り直す。テレビ欄を開いたまま放置すると
+   * 先読みが 6h → 0 と痩せ、窓を過ぎると「全て終了済みの番組表」を
+   * 現在時刻ライン付きで見せ続けてしまうため、定期更新から呼ぶ。
+   * 作り直したときだけ true を返す(呼び出し側の二重更新を避けるため)。
+   */
+  function refreshTimelineWindow() {
+    if (state.view !== 'timeline' || !tlBody) return false;
+    if (Math.floor(Date.now() / 1000 / 3600) * 3600 === state.timelineStart) return false;
+    dom.timeline.textContent = '';
+    tlBody = null;
+    state.rendered = 0;
+    prepareTimeline(); // 末尾で updateTimelineNow() を呼ぶ
+    renderChunk();
+    return true;
+  }
+
   /** 現在時刻ライン(--now-pct)と「放送中」ハイライトを現在時刻に追従させる */
   function updateTimelineNow() {
     if (state.view !== 'timeline' || !tlBody) return;
@@ -739,7 +768,7 @@
     setInterval(() => {
       refreshEpgCards();
       refreshLocalTimes();
-      updateTimelineNow();
+      if (!refreshTimelineWindow()) updateTimelineNow();
     }, 30000);
     loadData();
     // テスト・デバッグ用フック
