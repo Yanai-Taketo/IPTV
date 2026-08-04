@@ -99,6 +99,47 @@ test.describe('プレイヤー', () => {
     await expect(page.locator('#player-error')).toBeVisible();
   });
 
+  test('公式サイトのリンクは再生できるチャンネルにも常設される', async ({ page }) => {
+    await page.locator('.card', { hasText: 'NHK World Japan' }).click();
+    const site = page.locator('#player-site');
+    await expect(site).toBeVisible();
+    await expect(site).toHaveText('公式サイトを開く');
+    await expect(site).toHaveAttribute('href', 'https://www3.nhk.or.jp/nhkworld/');
+    await expect(site).toHaveAttribute('target', '_blank');
+    await expect(site).toHaveAttribute('rel', /noopener/);
+  });
+
+  test('配信なしチャンネルでも公式サイトのリンクが出る', async ({ page }) => {
+    await page.locator('.card', { hasText: 'No Stream TV' }).click();
+    await expect(page.locator('#player-status')).toContainText('配信 URL は未登録');
+    await expect(page.locator('#player-site')).toHaveAttribute('href', 'https://nostream.example/watch');
+  });
+
+  test('website が無いチャンネルではリンクを出さず、切り替え時に持ち越さない', async ({ page }) => {
+    await page.locator('.card', { hasText: 'NHK World Japan' }).click();
+    await expect(page.locator('#player-site')).toBeVisible();
+    await page.click('#player-close');
+    await expect(page.locator('#player-modal')).not.toHaveAttribute('open', '');
+
+    await page.locator('.card', { hasText: 'Multi Stream TV' }).click();
+    await expect(page.locator('#player-modal')).toHaveAttribute('open', '');
+    await expect(page.locator('#player-site')).toHaveCount(0);
+  });
+
+  test('http(s) 以外の website は無視する', async ({ page }) => {
+    await page.locator('.card', { hasText: 'Http Only TV' }).click();
+    await expect(page.locator('#player-modal')).toHaveAttribute('open', '');
+    await expect(page.locator('#player-site')).toHaveCount(0);
+  });
+
+  test('全ソース失敗時もリンクは 1 つだけ(エラーパネルに重複しない)', async ({ page }) => {
+    await page.locator('.card', { hasText: 'US News Channel' }).click();
+    await expect(page.locator('#player-error')).toBeVisible({ timeout: 30000 });
+    await expect(page.locator('#player-site')).toHaveAttribute('href', 'https://usnews.example/live');
+    await expect(page.locator('a', { hasText: '公式サイトを開く' })).toHaveCount(1);
+    await expect(page.locator('#player-error-actions a', { hasText: '公式サイト' })).toHaveCount(0);
+  });
+
   test('ランダム再生ボタンでプレイヤーが開く', async ({ page }) => {
     await page.locator('#shuffle-btn').click();
     await expect(page.locator('#player-modal')).toHaveAttribute('open', '');

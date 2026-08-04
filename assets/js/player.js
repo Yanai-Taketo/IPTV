@@ -4,7 +4,8 @@
  * プレイヤーモーダル。
  * hls.js (MSE) → Safari ネイティブ HLS の順でフォールバックし、
  * 失敗時はチャンネル内の別ストリームを自動で順に試す。
- * 全滅したらエラーパネル(URLコピー / .m3u ダウンロード / 公式サイト)を表示する。
+ * 全滅したらエラーパネル(URLコピー / .m3u ダウンロード)を表示する。
+ * 公式サイトへのリンクは再生の成否によらず常設(#player-links)。
  */
 const IPTVPlayer = (() => {
   const DASH_CDN = 'https://cdn.jsdelivr.net/npm/dashjs@5.2.0/dist/modern/umd/dash.all.min.js';
@@ -126,6 +127,7 @@ const IPTVPlayer = (() => {
       meta: document.getElementById('player-meta'),
       status: document.getElementById('player-status'),
       variants: document.getElementById('player-variants'),
+      links: document.getElementById('player-links'),
       epg: document.getElementById('player-epg'),
       error: document.getElementById('player-error'),
       errorActions: document.getElementById('player-error-actions'),
@@ -156,6 +158,10 @@ const IPTVPlayer = (() => {
       const s = currentStream();
       setStatus('● 再生中' + (s && s.quality ? ` (${s.quality})` : ''), 'ok');
       if (onPlayingCallback && entry) onPlayingCallback(entry.key);
+    });
+    // バックグラウンドタブでは setInterval が間引かれるため、復帰時に即座に追いつかせる
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) renderLocalTime();
     });
   }
 
@@ -411,8 +417,10 @@ const IPTVPlayer = (() => {
     if (vol !== null) dom.video.volume = vol;
 
     renderVariants();
+    renderLinks();
     renderEpg();
     startEpgTimer();
+    startClock();
     updateMediaSession();
     setMediaSessionHandlers(true);
     if (!dom.modal.open) dom.modal.showModal();
@@ -434,6 +442,7 @@ const IPTVPlayer = (() => {
   function handleDialogClose() {
     teardown();
     stopEpgTimer();
+    stopClock();
     setMediaSessionHandlers(false);
     entry = null;
     updateMediaSession(); // entry を消してから呼ぶ = メタデータの解除
@@ -441,6 +450,7 @@ const IPTVPlayer = (() => {
     setNav(null);
     clearTimeout(osdTimer);
     if (dom.osd) dom.osd.hidden = true;
+    dom.links.textContent = '';
     if (dom.epg) {
       dom.epg.hidden = true;
       dom.epg.textContent = '';
@@ -490,6 +500,40 @@ const IPTVPlayer = (() => {
     updateVariantStates();
   }
 
+  // ---- 公式サイトへの導線 ---------------------------------------------------
+
+  /** データ由来の URL をそのまま href にしないための検証(絶対 http(s) のみ許可) */
+  function safeSiteUrl(url) {
+    if (!url) return null;
+    let u;
+    try {
+      u = new URL(url); // 基底を渡さないため、相対 URL はここで弾かれる
+    } catch (e) {
+      return null;
+    }
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+  }
+
+  /**
+   * 公式サイトのリンク。iptv-org の channels.json は約 7 割のチャンネルに
+   * website を持つため、再生の成否によらず常に出す(配信 URL 未登録の
+   * チャンネルでも、公式サイトでなら視聴できることがある)。
+   */
+  function renderLinks() {
+    dom.links.textContent = '';
+    const site = entry ? safeSiteUrl(entry.website) : null;
+    if (!site) return;
+    const a = document.createElement('a');
+    a.id = 'player-site';
+    a.className = 'action-btn';
+    a.textContent = '公式サイトを開く';
+    a.title = `${entry.name} の公式サイト(別タブで開きます)`;
+    a.href = site;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    dom.links.appendChild(a);
+  }
+
   function updateVariantStates() {
     const btns = dom.variants.querySelectorAll('.variant-btn');
     btns.forEach((btn) => {
@@ -515,23 +559,55 @@ const IPTVPlayer = (() => {
   const EPG_REFRESH_MS = 30000;
   let epgTimer = 0;
 
-  /** ヘッダのメタ情報。現地時刻を含むため定期的に描き直す */
+  /** ヘッダのメタ情報。現地時刻は span に分離し、1 秒ごとにそこだけ差し替える */
   function renderMeta() {
     if (!entry) return;
-    const parts = [entry.countryName];
-    if (entry.timezone) {
-      const t = IPTVData.localTime(entry.timezone, new Date());
-      if (t) parts.push(`現地 ${t}`);
+    localTimeEl = null;
+    dom.meta.textContent = '';
+    const parts = [document.createTextNode(entry.countryName)];
+    if (entry.timezone && IPTVData.localTime(entry.timezone, new Date(), true)) {
+      localTimeEl = document.createElement('span');
+      localTimeEl.className = 'player-local';
+      parts.push(localTimeEl);
     }
-    if (entry.network) parts.push(entry.network);
-    if (entry.closed) parts.push(`閉局: ${entry.closed}`);
-    dom.meta.textContent = parts.join(' ・ ');
+    if (entry.network) parts.push(document.createTextNode(entry.network));
+    if (entry.closed) parts.push(document.createTextNode(`閉局: ${entry.closed}`));
+    parts.forEach((node, i) => {
+      if (i) dom.meta.appendChild(document.createTextNode(' ・ '));
+      dom.meta.appendChild(node);
+    });
+    renderLocalTime();
+  }
+
+  // ---- 現地時刻の実時間更新 --------------------------------------------------
+
+  const CLOCK_MS = 1000;
+  let clockTimer = 0;
+  let localTimeEl = null;
+
+  /** 視聴中の現地時刻を現在時刻へ追従させる(秒まで表示するので毎秒更新) */
+  function renderLocalTime() {
+    if (!localTimeEl || !entry) return;
+    const t = IPTVData.localTime(entry.timezone, new Date(), true);
+    if (t) localTimeEl.textContent = `現地 ${t}`;
+  }
+
+  function startClock() {
+    stopClock();
+    clockTimer = setInterval(renderLocalTime, CLOCK_MS);
+  }
+
+  function stopClock() {
+    if (clockTimer) {
+      clearInterval(clockTimer);
+      clockTimer = 0;
+    }
   }
 
   function startEpgTimer() {
     stopEpgTimer();
+    // 現地時刻は 1 秒タイマー(startClock)が受け持つので、ここでは扱わない
     epgTimer = setInterval(() => {
-      renderMeta();
       renderEpg();
       updateMediaSession(); // 番組が変われば通知センター側の表示も追従させる
     }, EPG_REFRESH_MS);
@@ -914,16 +990,7 @@ const IPTVPlayer = (() => {
     m3uBtn.href = m3uUrl;
     m3uBtn.download = `${entry.name.replace(/[\\/:*?"<>|]/g, '_')}.m3u`;
     dom.errorActions.appendChild(m3uBtn);
-
-    if (entry.website) {
-      const site = document.createElement('a');
-      site.className = 'action-btn';
-      site.textContent = '公式サイトを開く';
-      site.href = entry.website;
-      site.target = '_blank';
-      site.rel = 'noopener noreferrer';
-      dom.errorActions.appendChild(site);
-    }
+    // 公式サイトへのリンクは #player-links に常設したため、ここには出さない
   }
 
   function copyText(text) {

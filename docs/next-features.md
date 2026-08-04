@@ -65,7 +65,9 @@ PR での二重テスト実行。
   `IPTVPlayer.setNav()` で渡し、`applyFilters()` のたびに再同期する
   (再生中チャンネルが結果から外れたら操作ごと無効化)
 - Media Session のメタデータは「現在番組名 + チャンネル名 + ロゴ」。既存の 30 秒
-  タイマーにぶら下げて番組境界に追従し、`previoustrack`/`nexttrack` を同じザッピングへ配線
+  タイマー(`startEpgTimer`)にぶら下げて番組境界に追従し、`previoustrack`/`nexttrack`
+  を同じザッピングへ配線。なお main 側の並行変更で現地時刻は 1 秒タイマー
+  (`startClock`)に分離されたため、30 秒タイマーは `renderEpg` + Media Session のみ
 - ショートカットは m / f / ↑↓ / ←→。**プレイヤーが開いている間だけ**有効(閉じている
   ときは一覧側の操作を一切奪わない)。入力欄フォーカス中と修飾キー併用時も横取りしない
 - 音量は `store.js` に足した汎用 `getPref`/`setPref` で保存・復元。ユーザーが自分で
