@@ -40,6 +40,8 @@
 
   function initDom() {
     dom = {
+      toolbar: $('toolbar'),
+      filtersToggle: $('filters-toggle'),
       loading: $('loading'),
       loadingList: $('loading-list'),
       loadError: $('load-error'),
@@ -205,6 +207,33 @@
     dom.favOnlyLabel.lastChild.textContent = ` お気に入りのみ (${IPTVStore.favoriteCount().toLocaleString('ja-JP')})`;
   }
 
+  // ---- フィルタ折りたたみ(モバイル) ----------------------------------------
+  //
+  // 狭い画面ではフィルタ群を折りたたむ(CSS 側で切替)。適用中のフィルタ数を
+  // トグルに表示し、畳んだままでも絞り込み状態が分かるようにする。
+
+  /** 一覧を絞り込んでいる操作の数(既定値から変えたものだけを数える) */
+  function activeFilterCount() {
+    let n = 0;
+    if (state.country) n++;
+    if (state.region) n++;
+    if (state.category) n++;
+    if (state.language) n++;
+    if (state.httpsOnly !== PAGE_HTTPS) n++; // HTTPS ページでは既定オンなので差分のみ数える
+    if (state.checkedOnly) n++;
+    if (state.epgOnly) n++;
+    if (state.favOnly) n++;
+    if (state.nightOnly) n++;
+    return n;
+  }
+
+  function updateFiltersToggle() {
+    const open = dom.toolbar.classList.contains('filters-open');
+    const n = activeFilterCount();
+    dom.filtersToggle.textContent = `絞り込み${n ? ` (${n})` : ''} ${open ? '▴' : '▾'}`;
+    dom.filtersToggle.setAttribute('aria-expanded', String(open));
+  }
+
   // ---- フィルタリング --------------------------------------------------------
 
   function applyFilters() {
@@ -259,6 +288,7 @@
     }
 
     dom.stats.textContent = `${state.filtered.length.toLocaleString('ja-JP')} / ${d.totals.channels.toLocaleString('ja-JP')} チャンネル`;
+    updateFiltersToggle();
 
     dom.grid.textContent = '';
     dom.timeline.textContent = '';
@@ -717,6 +747,10 @@
       const pool = state.filtered.filter((e) => e.streams.length);
       if (!pool.length) return;
       openEntry(pool[Math.floor(Math.random() * pool.length)]);
+    });
+    dom.filtersToggle.addEventListener('click', () => {
+      dom.toolbar.classList.toggle('filters-open');
+      updateFiltersToggle();
     });
     dom.viewToggle.addEventListener('click', () => {
       state.view = state.view === 'timeline' ? 'cards' : 'timeline';
