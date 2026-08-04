@@ -1,7 +1,7 @@
 [
   {"code":"ASIA","name":"Asia","countries":["JP","RU"]},
   {"code":"NORAM","name":"North America","countries":["US"]},
-  {"code":"EMPTY","name":"Empty Region","countries":["FR"]},
+  {"code":"EMPTY","name":"Empty Region","countries":["DE"]},
   {"code":"WW","name":"Worldwide","countries":["JP","US","FR","RU"]},
   {"code":"UN","name":"United Nations","countries":["JP","US","FR","RU"]}
 ]

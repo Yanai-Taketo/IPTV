@@ -193,6 +193,30 @@ button { font-family: inherit; }
 .toolbar > * { border-left: 1px solid var(--hairline); }
 .toolbar > :first-child { border-left: none; }
 
+/* フィルタ群のラッパー。デスクトップでは contents 化して従来どおり
+   ツールバーの並びに溶かし、モバイルでは開閉パネルになる(レスポンシブ節参照)。
+   DOM 順 = 視覚順(検索 → フィルタ → ボタン)を保ち、Tab のフォーカス順を
+   乱さない。並べ替えるのはモバイルで開いたパネルを最後に回す 1 箇所だけ */
+.filters-toggle { display: none; }
+.toolbar-filters { display: contents; }
+.toolbar-filters > * { border-left: 1px solid var(--hairline); }
+
+.filters-toggle {
+  align-items: center;
+  gap: 7px;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.filters-toggle:focus-visible { outline-offset: -2px; }
+
 .toolbar input[type="search"] {
   flex: 1 1 220px;
   min-width: 160px;
@@ -945,9 +969,10 @@ button { font-family: inherit; }
 /* ---- レスポンシブ ---- */
 
 @media (max-width: 720px) {
-  .masthead-top { padding: 12px 16px 10px; }
+  .masthead-top { padding: 9px 16px 8px; }
   .masthead-side { display: none; }
   .brand-sub-en { display: none; }
+  .brand-mark { width: 28px; height: 28px; }
   .toolbar { border-top: 1px solid var(--hairline); }
   .toolbar input[type="search"] {
     flex: 1 1 100%;
@@ -957,6 +982,22 @@ button { font-family: inherit; }
   }
   .toolbar select { flex: 1 1 auto; max-width: none; }
   .toolbar .action-btn { flex: 1 1 auto; justify-content: center; }
+
+  /* 画面が狭いときはフィルタ群を折りたたみ、検索 + ボタン行だけ常時表示する
+     (ヘッダーが画面の大半を占めないように)。開閉はトグルボタンで行う */
+  .filters-toggle { display: inline-flex; flex: 1 1 auto; justify-content: center; }
+  .toolbar-filters { display: none; }
+  .toolbar.filters-open .toolbar-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    order: 5; /* 検索・ボタン行の下にパネルを敷く(DOM 順はデスクトップの視覚順を優先) */
+    flex: 1 1 100%;
+    border-top: 1px solid var(--hairline);
+    border-left: none; /* .toolbar > * の区切り線はパネル自身には不要 */
+  }
+  .toolbar.filters-open .toolbar-filters > :first-child { border-left: none; }
+
   .grid { margin: 0 12px 20px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
   .grid-head { margin: 14px 12px 6px; }
   .card-logo { height: 74px; }

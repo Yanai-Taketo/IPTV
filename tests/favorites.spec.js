@@ -152,7 +152,7 @@ test.describe('最近見たチャンネル履歴', () => {
 
   test('履歴が無い状態でも最近見た順は通常の並びで動作する', async ({ page }) => {
     await page.selectOption('#sort-order', 'recent');
-    await expect(page.locator('.card')).toHaveCount(7);
-    await expect(page.locator('.card-name').first()).toHaveText('Http Only TV'); // 名前順にフォールバック
+    await expect(page.locator('.card')).toHaveCount(9);
+    await expect(page.locator('.card-name').first()).toHaveText('Adult Channel'); // 名前順にフォールバック
   });
 });

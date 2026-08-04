@@ -18,12 +18,12 @@ test('任意エンドポイントの取得失敗時はロゴ・言語なしで�
   }
   await page.goto('/');
   await expect(page.locator('#app')).toBeVisible();
-  await expect(page.locator('.card')).toHaveCount(7);
+  await expect(page.locator('.card')).toHaveCount(9);
   // 言語データが無いため言語フィルタは「すべての言語」のみ
   await expect(page.locator('#filter-language option')).toHaveCount(1);
   // ロゴが無いため全カードがプレースホルダー表示
   await expect(page.locator('.card-logo img')).toHaveCount(0);
-  await expect(page.locator('.logo-placeholder')).toHaveCount(7);
+  await expect(page.locator('.logo-placeholder')).toHaveCount(9);
 });
 
 test('必須エンドポイント失敗でエラー画面、再試行で復帰しフィルタが重複しない', async ({ page }) => {
@@ -43,10 +43,10 @@ test('必須エンドポイント失敗でエラー画面、再試行で復帰�
   failChannels = false;
   await page.locator('#retry-btn').click();
   await expect(page.locator('#app')).toBeVisible();
-  await expect(page.locator('.card')).toHaveCount(7);
+  await expect(page.locator('.card')).toHaveCount(9);
 
   // 再試行後もフィルタ選択肢が重複していない
   const values = await page.$$eval('#filter-country option', (opts) => opts.map((o) => o.value));
   expect(values.length).toBe(new Set(values).size);
-  await expect(page.locator('#filter-country option')).toHaveCount(5); // 全て + JP/US/RU/不明
+  await expect(page.locator('#filter-country option')).toHaveCount(6); // 全て + JP/US/FR/RU/不明
 });

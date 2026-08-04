@@ -205,6 +205,13 @@ const IPTVPlayer = (() => {
     renderEpg();
     startEpgTimer();
     if (!dom.modal.open) dom.modal.showModal();
+    if (!entry.streams.length) {
+      // 配信 URL 未登録のチャンネル: 再生は試みず、情報表示のみ
+      teardown();
+      currentIndex = -1;
+      setStatus('このチャンネルの配信 URL は未登録です(チャンネル情報のみ)', 'warn');
+      return;
+    }
     play(0, true);
   }
 

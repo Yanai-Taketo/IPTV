@@ -19,7 +19,6 @@
     region: '',
     category: '',
     language: '',
-    nightOnly: false, // 現地時刻 19–23 時のチャンネルのみ
     httpsOnly: PAGE_HTTPS, // HTTPS ページでは HTTP 配信は再生不可のため既定でオン
     checkedOnly: false,
     epgOnly: false,
@@ -40,6 +39,8 @@
 
   function initDom() {
     dom = {
+      toolbar: $('toolbar'),
+      filtersToggle: $('filters-toggle'),
       loading: $('loading'),
       loadingList: $('loading-list'),
       loadError: $('load-error'),
@@ -59,8 +60,6 @@
       epgOnlyLabel: $('epg-only-label'),
       favOnly: $('fav-only'),
       favOnlyLabel: $('fav-only-label'),
-      nightOnly: $('night-only'),
-      nightOnlyLabel: $('night-only-label'),
       gridHeadNote: $('grid-head-note'),
       proxyBase: $('proxy-base'),
       proxySave: $('proxy-save'),
@@ -150,9 +149,6 @@
       for (const r of d.regionOptions) addOption(dom.region, r.code, `${r.name} (${r.count})`);
     }
 
-    // 現地時刻フィルタはタイムゾーンを持つチャンネルがある場合のみ表示
-    dom.nightOnlyLabel.hidden = !d.entries.some((e) => e.timezone);
-    dom.nightOnly.checked = state.nightOnly;
 
     addOption(dom.category, '', 'すべてのカテゴリ');
     for (const c of d.categoryOptions) addOption(dom.category, c.id, `${c.name} (${c.count})`);
@@ -205,6 +201,38 @@
     dom.favOnlyLabel.lastChild.textContent = ` お気に入りのみ (${IPTVStore.favoriteCount().toLocaleString('ja-JP')})`;
   }
 
+  // ---- フィルタ折りたたみ(モバイル) ----------------------------------------
+  //
+  // 狭い画面ではフィルタ群を折りたたむ(CSS 側で切替)。適用中のフィルタ数を
+  // トグルに表示し、畳んだままでも絞り込み状態が分かるようにする。
+
+  /** 一覧を絞り込んでいる操作の数(既定値から変えたものだけを数える) */
+  function activeFilterCount() {
+    let n = 0;
+    if (state.country) n++;
+    if (state.region) n++;
+    if (state.category) n++;
+    if (state.language) n++;
+    if (state.httpsOnly !== PAGE_HTTPS) n++; // HTTPS ページでは既定オンなので差分のみ数える
+    if (state.checkedOnly) n++;
+    if (state.epgOnly) n++;
+    if (state.favOnly) n++;
+    return n;
+  }
+
+  function updateFiltersToggle() {
+    const open = dom.toolbar.classList.contains('filters-open');
+    const n = activeFilterCount();
+    // 矢印は装飾なので aria-hidden に隔離し、SR には「絞り込み (n)」だけを読ませる
+    // (開閉状態は aria-expanded で伝わる)
+    dom.filtersToggle.textContent = `絞り込み${n ? ` (${n})` : ''}`;
+    const arrow = document.createElement('span');
+    arrow.setAttribute('aria-hidden', 'true');
+    arrow.textContent = open ? ' ▴' : ' ▾';
+    dom.filtersToggle.appendChild(arrow);
+    dom.filtersToggle.setAttribute('aria-expanded', String(open));
+  }
+
   // ---- フィルタリング --------------------------------------------------------
 
   function applyFilters() {
@@ -215,24 +243,14 @@
     const regionCountries = state.region
       ? (d.regionOptions.find((r) => r.code === state.region) || { countries: new Set() }).countries
       : null;
-    // 「現地が夜」判定: 同一 tz の現地時はフィルタ 1 回の間キャッシュする
-    const now = new Date();
-    const hourByTz = new Map();
-    const localHour = (tz) => {
-      if (!hourByTz.has(tz)) hourByTz.set(tz, IPTVData.localHour(tz, now));
-      return hourByTz.get(tz);
-    };
 
     state.filtered = d.entries.filter((e) => {
       if (state.country && e.country !== state.country) return false;
       if (regionCountries && !regionCountries.has(e.country)) return false;
-      if (state.nightOnly) {
-        const h = e.timezone ? localHour(e.timezone) : null; // tz 不明は対象外
-        if (h === null || h < 19 || h >= 23) return false;
-      }
       if (state.category && !e.categories.includes(state.category)) return false;
       if (state.language && !e.languages.includes(state.language)) return false;
-      if (state.httpsOnly && !e.hasHttps) return false;
+      // HTTPS のみ: 再生手段の絞り込みなので、配信を持たないチャンネルには適用しない
+      if (state.httpsOnly && e.streams.length && !e.hasHttps) return false;
       if (state.checkedOnly && e.playability !== 'ok') return false;
       if (state.epgOnly && !IPTVEpg.get(e.key)) return false;
       if (state.favOnly && !IPTVStore.isFavorite(e.key)) return false;
@@ -242,9 +260,10 @@
       return true;
     });
 
-    // お気に入りを常に先頭へ。その中では再生確認済み → 未確認 → 応答なし、の順
+    // お気に入りを常に先頭へ。その中では再生確認済み → 未確認 → 応答なし → 配信なし、の順
     const frank = (e) => (IPTVStore.isFavorite(e.key) ? 0 : 1);
-    const prank = (e) => (e.playability === 'ok' ? 0 : e.playability === 'dead' ? 2 : 1);
+    const prank = (e) =>
+      !e.streams.length ? 3 : e.playability === 'ok' ? 0 : e.playability === 'dead' ? 2 : 1;
     if (state.sort === 'recent') {
       // 最近見た順: 再生できた履歴が新しいものから。履歴が無いものは通常の名前順
       const ranks = IPTVStore.historyRanks();
@@ -257,6 +276,7 @@
     }
 
     dom.stats.textContent = `${state.filtered.length.toLocaleString('ja-JP')} / ${d.totals.channels.toLocaleString('ja-JP')} チャンネル`;
+    updateFiltersToggle();
 
     dom.grid.textContent = '';
     dom.timeline.textContent = '';
@@ -372,10 +392,24 @@
       body.appendChild(epg);
     }
 
-    if (entry.playability === 'dead') card.classList.add('card-dead');
+    if (entry.playability === 'dead' || !entry.streams.length) card.classList.add('card-dead');
 
     const badges = document.createElement('div');
     badges.className = 'card-badges';
+    if (!entry.streams.length) {
+      const ns = document.createElement('span');
+      ns.className = 'badge';
+      ns.textContent = '配信なし';
+      ns.title = '配信 URL が未登録のチャンネルです(チャンネル情報のみ)';
+      badges.appendChild(ns);
+    }
+    if (entry.isNsfw) {
+      const nb = document.createElement('span');
+      nb.className = 'badge warn';
+      nb.textContent = '18+';
+      nb.title = 'アダルトコンテンツを含む可能性のあるチャンネルです';
+      badges.appendChild(nb);
+    }
     if (entry.playability === 'ok') {
       const okb = document.createElement('span');
       okb.className = 'badge ok';
@@ -711,7 +745,6 @@
     }, 150));
     dom.country.addEventListener('change', () => { state.country = dom.country.value; applyFilters(); });
     dom.region.addEventListener('change', () => { state.region = dom.region.value; applyFilters(); });
-    dom.nightOnly.addEventListener('change', () => { state.nightOnly = dom.nightOnly.checked; applyFilters(); });
     dom.category.addEventListener('change', () => { state.category = dom.category.value; applyFilters(); });
     dom.language.addEventListener('change', () => { state.language = dom.language.value; applyFilters(); });
     dom.sort.addEventListener('change', () => { state.sort = dom.sort.value; applyFilters(); });
@@ -726,9 +759,14 @@
       dom.proxyStatus.textContent = v ? `プロキシを設定しました: ${v}` : 'プロキシ設定を解除しました';
     });
     dom.shuffle.addEventListener('click', () => {
-      if (!state.filtered.length) return;
-      const entry = state.filtered[Math.floor(Math.random() * state.filtered.length)];
-      openEntry(entry);
+      // ランダム選局は「再生できる可能性のある」チャンネルから選ぶ(配信なしは除く)
+      const pool = state.filtered.filter((e) => e.streams.length);
+      if (!pool.length) return;
+      openEntry(pool[Math.floor(Math.random() * pool.length)]);
+    });
+    dom.filtersToggle.addEventListener('click', () => {
+      dom.toolbar.classList.toggle('filters-open');
+      updateFiltersToggle();
     });
     dom.viewToggle.addEventListener('click', () => {
       state.view = state.view === 'timeline' ? 'cards' : 'timeline';

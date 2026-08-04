@@ -33,37 +33,36 @@
         <span id="stats" class="stats" aria-live="polite"></span>
       </div>
     </div>
-    <div class="toolbar">
+    <div class="toolbar" id="toolbar">
       <input id="search" type="search" placeholder="チャンネル名・国名で検索" autocomplete="off" aria-label="チャンネル検索">
-      <select id="filter-country" aria-label="国・地域で絞り込み"></select>
-      <select id="filter-region" aria-label="地域(大陸・経済圏)で絞り込み" hidden></select>
-      <select id="filter-category" aria-label="カテゴリで絞り込み"></select>
-      <select id="filter-language" aria-label="言語で絞り込み"></select>
-      <select id="sort-order" aria-label="並び順">
-        <option value="name">名前順</option>
-        <option value="country">国順</option>
-        <option value="recent">最近見た順</option>
-      </select>
-      <label class="check">
-        <input id="https-only" type="checkbox">
-        HTTPS のみ
-      </label>
-      <label class="check" id="checked-only-label" hidden>
-        <input id="checked-only" type="checkbox">
-        再生確認済みのみ
-      </label>
-      <label class="check" id="epg-only-label" hidden>
-        <input id="epg-only" type="checkbox">
-        番組表ありのみ
-      </label>
-      <label class="check" id="fav-only-label">
-        <input id="fav-only" type="checkbox">
-        お気に入りのみ
-      </label>
-      <label class="check" id="night-only-label" title="チャンネルの現地時刻がゴールデンタイム(19–23 時)のものだけを表示" hidden>
-        <input id="night-only" type="checkbox">
-        現地 19–23 時
-      </label>
+      <button id="filters-toggle" type="button" class="filters-toggle" aria-expanded="false" aria-controls="toolbar-filters">絞り込み <span aria-hidden="true">▾</span></button>
+      <div id="toolbar-filters" class="toolbar-filters">
+        <select id="filter-country" aria-label="国・地域で絞り込み"></select>
+        <select id="filter-region" aria-label="地域(大陸・経済圏)で絞り込み" hidden></select>
+        <select id="filter-category" aria-label="カテゴリで絞り込み"></select>
+        <select id="filter-language" aria-label="言語で絞り込み"></select>
+        <select id="sort-order" aria-label="並び順">
+          <option value="name">名前順</option>
+          <option value="country">国順</option>
+          <option value="recent">最近見た順</option>
+        </select>
+        <label class="check">
+          <input id="https-only" type="checkbox">
+          HTTPS のみ
+        </label>
+        <label class="check" id="checked-only-label" hidden>
+          <input id="checked-only" type="checkbox">
+          再生確認済みのみ
+        </label>
+        <label class="check" id="epg-only-label" hidden>
+          <input id="epg-only" type="checkbox">
+          番組表ありのみ
+        </label>
+        <label class="check" id="fav-only-label">
+          <input id="fav-only" type="checkbox">
+          お気に入りのみ
+        </label>
+      </div>
       <button id="shuffle-btn" type="button" class="action-btn">ランダム選局</button>
       <button id="view-toggle" type="button" class="action-btn" aria-pressed="false" hidden>テレビ欄で見る</button>
     </div>
@@ -132,7 +131,7 @@
     <p>
       データソース: <a href="https://github.com/iptv-org/iptv" target="_blank" rel="noopener noreferrer">iptv-org/iptv</a>
       / <a href="https://github.com/iptv-org/api" target="_blank" rel="noopener noreferrer">iptv-org/api</a>(パブリックドメイン)。
-      各ストリームの著作権はそれぞれの放送局に帰属します。アダルトチャンネルはデータソースの方針により含まれていません。
+      各ストリームの著作権はそれぞれの放送局に帰属します。
     </p>
     <details class="advanced">
       <summary>詳細設定</summary>
