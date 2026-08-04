@@ -63,6 +63,27 @@ test.describe('地域フィルタ + 現地時刻', () => {
     await expect(page.locator('#player-meta')).toContainText('Japan ・ 現地 21:06:01 ・ NHK');
   });
 
+  test('配信 URL 未登録のチャンネルでも現地時刻は動き続ける', async ({ page }) => {
+    // 再生を試みずに情報表示だけで止まる経路(Europe/Paris = 14:00)
+    await page.locator('.card', { hasText: 'No Stream TV' }).click();
+    await expect(page.locator('#player-status')).toContainText('未登録');
+    const local = page.locator('#player-meta .player-local');
+    await expect(local).toHaveText('現地 14:00:00');
+    await page.clock.fastForward('00:03');
+    await expect(local).toHaveText('現地 14:00:03');
+  });
+
+  test('プレイヤーを閉じると時計は止まる(タイマーを残さない)', async ({ page }) => {
+    const nhk = page.locator('.card', { hasText: 'NHK World Japan' });
+    await nhk.click();
+    await expect(page.locator('#player-meta .player-local')).toHaveText('現地 21:00:00');
+    await page.locator('#player-close').click();
+    await expect(page.locator('#player-modal')).toBeHidden();
+    // 閉じた後の経過時間ではメタは書き換わらない(entry が無いので描画もしない)
+    await page.clock.fastForward('01:00');
+    await expect(page.locator('#player-meta')).toHaveText('Japan ・ 現地 21:00:00 ・ NHK');
+  });
+
 });
 
 test.describe('地域・タイムゾーンデータが無い環境', () => {
