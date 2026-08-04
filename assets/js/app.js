@@ -2,7 +2,7 @@
 
 /**
  * アプリ本体: データ読み込み → フィルタ UI 構築 → チャンネルグリッド描画。
- * 一覧は 60 件ずつの遅延描画(IntersectionObserver)で 1 万件超に対応する。
+ * 一覧は 60 件ずつの遅延描画(IntersectionObserver)で 4 万件超に対応する。
  */
 (() => {
   const CHUNK_SIZE = 60;

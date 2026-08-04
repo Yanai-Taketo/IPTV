@@ -202,6 +202,48 @@ test.describe('convertGuide', () => {
     expect(detail[4].isWellFormed()).toBe(true); // 孤立サロゲートが無い
   });
 
+  test('残った実体参照は戻す(タイトル・副題・説明・カテゴリ)', () => {
+    const { schedule, shards } = lib.convertGuide(
+      {
+        programs: [
+          makeProgram({
+            titles: [{ value: 'Bounce &amp; fun' }],
+            subTitles: [{ value: '&quot;Live&quot;' }],
+            descriptions: [{ value: 'Rock &amp; Roll &#38; more &#x26; more' }],
+            categories: [{ value: 'Kids &amp; Family' }],
+          }),
+        ],
+      },
+      { ...BASE, shardCount: 1 }
+    );
+    expect(schedule.channels['Chan.jp'].p[0][2]).toBe('Bounce & fun');
+    const detail = shards[schedule.channels['Chan.jp'].shard]['Chan.jp'][0];
+    expect(detail[2]).toBe('Bounce & fun');
+    expect(detail[3]).toBe('"Live"');
+    expect(detail[4]).toBe('Rock & Roll & more & more');
+    expect(detail[5]).toBe('Kids & Family');
+  });
+
+  test('実体参照の復元は 1 パスだけ・未知や不正な参照はそのまま残す', () => {
+    const { schedule } = lib.convertGuide(
+      {
+        programs: [
+          // 二重エスケープを戻しすぎない(&amp;lt; → &lt; で止める)
+          makeProgram({ titles: [{ value: 'A &amp;lt;b&amp;gt; C' }] }),
+          makeProgram({ start: 1785846600000, stop: 1785850200000, titles: [{ value: '&unknown; &#0; &#x110000; &amp' }] }),
+          // &nbsp; は通常の空白として扱う(前後は trim される)
+          makeProgram({ start: 1785850200000, stop: 1785853800000, titles: [{ value: '&nbsp;Gap&nbsp;Title&nbsp;' }] }),
+        ],
+      },
+      { ...BASE, shardCount: 1 }
+    );
+    expect(schedule.channels['Chan.jp'].p.map((p) => p[2])).toEqual([
+      'A &lt;b&gt; C',
+      '&unknown; &#0; &#x110000; &amp',
+      'Gap Title',
+    ]);
+  });
+
   test('シャード割り当ては schedule に記録され shardIndex と一致する', () => {
     const ids = ['A.jp', 'B.us', 'C.fr', 'D.de', 'E.uk'];
     const { schedule } = lib.convertGuide(

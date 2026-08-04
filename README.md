@@ -32,7 +32,10 @@
 ## 機能
 
 - **全世界のチャンネル一覧** — [iptv-org API](https://github.com/iptv-org/api) からチャンネル・ストリーム・ロゴ・国・カテゴリ・言語データを取得して結合(約 4 万 3 千エントリ)
-- **検索・絞り込み** — チャンネル名(別名・ネットワーク名を含む)のテキスト検索、国・カテゴリ・言語・HTTPS 配信のみでの絞り込み、名前順 / 国順ソート
+- **検索・絞り込み** — チャンネル名(別名・ネットワーク名を含む)のテキスト検索、国・地域(大陸・経済圏)・カテゴリ・言語・HTTPS 配信のみでの絞り込み、名前順 / 国順 / 最近見た順ソート
+- **お気に入り・視聴履歴** — カードの ☆ でお気に入り登録(一覧の先頭に固定・「お気に入りのみ」フィルタ)。
+  実際に再生できたチャンネルは履歴に残り、「最近見た順」で並べ直せる。いずれも `localStorage` に保存し、
+  使えない環境ではメモリ上で動作する(リロードで消えるだけで機能は壊れない)
 - **番組表(EPG)** — 公式グラバー [iptv-org/epg](https://github.com/iptv-org/epg) を CI で毎日実行し、再生確認済みチャンネル約 950 局の「現在の番組 + 進捗バー」を一覧に、番組詳細と「この後の番組」をプレイヤーに表示。「番組表ありのみ」フィルタと、時間軸に並べた「テレビ欄」表示付き
 - **ストリーミング再生** — [hls.js](https://github.com/video-dev/hls.js) による HLS 再生(Safari はネイティブ HLS にフォールバック)。DASH (.mpd) は dash.js を遅延読み込み、.mp4 / .webm はプログレッシブ再生
 - **自動フォールバック** — 複数ソースを持つチャンネルは、失敗時に次のソースを自動で試行
@@ -80,7 +83,8 @@ npx http-server -p 8080 .
 | `assets/js/data.js` | iptv-org API の取得と結合(streams → channels / feeds / logos / countries / categories / languages) |
 | `assets/js/epg.js` | 番組表データ(`data/epg/`)の読み込み・現在/次番組の算出・詳細シャードの遅延取得 |
 | `assets/js/player.js` | プレイヤーモーダル(hls.js / ネイティブ HLS / dash.js / プログレッシブ、自動フォールバック、番組表パネル) |
-| `assets/js/app.js` | UI 状態管理・検索・絞り込み・遅延描画 |
+| `assets/js/store.js` | お気に入り・視聴履歴の保存(`localStorage`、使えない環境ではメモリ) |
+| `assets/js/app.js` | UI 状態管理・検索・絞り込み・遅延描画・テレビ欄(タイムライン) |
 | `assets/css/style.css` | エディトリアル UI(番組表グリッド・プレイヤー管制室スタイル) |
 | `assets/fonts/` | 同梱 Web フォント(Archivo 可変・IBM Plex Mono、latin サブセット、OFL) |
 

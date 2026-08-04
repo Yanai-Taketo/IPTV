@@ -219,10 +219,42 @@ export function shardIndex(channelId, shardCount) {
   return (hash >>> 0) % shardCount;
 }
 
+const NAMED_ENTITIES = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ', // U+00A0 ではなく通常の空白へ。表示は変わらず、見えない差分を残さない
+};
+
+/**
+ * 実体参照を 1 パスだけ戻す。グラバーのサイトパーサには XMLTV / HTML の
+ * エスケープを解かずに値を渡すものがあり(例: "Bounce &amp; fun")、
+ * 表示側は textContent で入れるため素通しすると画面にそのまま出てしまう。
+ * 置換を 1 パスに限るのは、本文中の "&amp;lt;" を "<" まで戻さないため。
+ */
+function decodeEntities(text) {
+  if (!text.includes('&')) return text;
+  return text.replace(/&(#[0-9]+|#x[0-9a-f]+|[a-z]+);/gi, (ref, body) => {
+    if (body[0] === '#') {
+      const code = body[1] === 'x' || body[1] === 'X'
+        ? Number.parseInt(body.slice(2), 16)
+        : Number.parseInt(body.slice(1), 10);
+      // 不正な符号位置(範囲外・NUL・サロゲート単体)は元の文字列のまま残す
+      if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) return ref;
+      if (code >= 0xd800 && code <= 0xdfff) return ref;
+      return String.fromCodePoint(code);
+    }
+    const named = NAMED_ENTITIES[body.toLowerCase()];
+    return named === undefined ? ref : named;
+  });
+}
+
 function firstValue(list) {
   if (!Array.isArray(list) || !list.length) return '';
   const v = list[0] && list[0].value != null ? String(list[0].value) : '';
-  return v.trim();
+  return decodeEntities(v).trim();
 }
 
 function truncate(text, limit) {
@@ -248,6 +280,7 @@ function episodeLabel(episodeNumbers) {
  * - タイトル無し・時刻不正・長すぎる番組はデータ不良としてスキップ
  * - 生成時点より pruneAgeSec 以上前に終了した番組は落とす(配信サイズ削減)
  * - 同一 (開始時刻, タイトル) の重複(日またぎで両日に現れる番組)は 1 つに畳む
+ * - タイトル・副題・説明・カテゴリに残った実体参照(&amp; など)は 1 回だけ戻す
  *
  * @param {object} grabJson {channels: [...], programs: [...]}
  * @param {object} opts {generatedAt, days, shardCount, descLimit, maxDurationSec, pruneAgeSec}
