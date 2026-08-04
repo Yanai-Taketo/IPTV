@@ -18,6 +18,7 @@
     httpsOnly: PAGE_HTTPS, // HTTPS ページでは HTTP 配信は再生不可のため既定でオン
     checkedOnly: false,
     epgOnly: false,
+    favOnly: false,
     sort: 'name',
     filtered: [],
     rendered: 0,
@@ -47,6 +48,8 @@
       checkedOnlyLabel: $('checked-only-label'),
       epgOnly: $('epg-only'),
       epgOnlyLabel: $('epg-only-label'),
+      favOnly: $('fav-only'),
+      favOnlyLabel: $('fav-only-label'),
       gridHeadNote: $('grid-head-note'),
       proxyBase: $('proxy-base'),
       proxySave: $('proxy-save'),
@@ -161,7 +164,14 @@
       dom.epgOnlyLabel.hidden = true;
     }
 
+    dom.favOnly.checked = state.favOnly;
+    updateFavLabel();
+
     if (noteParts.length) dom.gridHeadNote.textContent = noteParts.join(' ・ ');
+  }
+
+  function updateFavLabel() {
+    dom.favOnlyLabel.lastChild.textContent = ` お気に入りのみ (${IPTVStore.favoriteCount().toLocaleString('ja-JP')})`;
   }
 
   // ---- フィルタリング --------------------------------------------------------
@@ -178,18 +188,25 @@
       if (state.httpsOnly && !e.hasHttps) return false;
       if (state.checkedOnly && e.playability !== 'ok') return false;
       if (state.epgOnly && !IPTVEpg.get(e.key)) return false;
+      if (state.favOnly && !IPTVStore.isFavorite(e.key)) return false;
       for (const t of tokens) {
         if (e.haystack.indexOf(t) === -1) return false;
       }
       return true;
     });
 
-    // 再生確認済み → 未確認 → 応答なし、の順を最優先に(インデックス無しなら影響なし)
+    // お気に入りを常に先頭へ。その中では再生確認済み → 未確認 → 応答なし、の順
+    const frank = (e) => (IPTVStore.isFavorite(e.key) ? 0 : 1);
     const prank = (e) => (e.playability === 'ok' ? 0 : e.playability === 'dead' ? 2 : 1);
-    if (state.sort === 'country') {
-      state.filtered.sort((a, b) => (prank(a) - prank(b)) || a.countryName.localeCompare(b.countryName, 'en') || a.sortKey.localeCompare(b.sortKey, 'en'));
+    if (state.sort === 'recent') {
+      // 最近見た順: 再生できた履歴が新しいものから。履歴が無いものは通常の名前順
+      const ranks = IPTVStore.historyRanks();
+      const hrank = (e) => (ranks.has(e.key) ? ranks.get(e.key) : Infinity);
+      state.filtered.sort((a, b) => (frank(a) - frank(b)) || (hrank(a) - hrank(b)) || (prank(a) - prank(b)) || a.sortKey.localeCompare(b.sortKey, 'en'));
+    } else if (state.sort === 'country') {
+      state.filtered.sort((a, b) => (frank(a) - frank(b)) || (prank(a) - prank(b)) || a.countryName.localeCompare(b.countryName, 'en') || a.sortKey.localeCompare(b.sortKey, 'en'));
     } else {
-      state.filtered.sort((a, b) => (prank(a) - prank(b)) || a.sortKey.localeCompare(b.sortKey, 'en'));
+      state.filtered.sort((a, b) => (frank(a) - frank(b)) || (prank(a) - prank(b)) || a.sortKey.localeCompare(b.sortKey, 'en'));
     }
 
     dom.stats.textContent = `${state.filtered.length.toLocaleString('ja-JP')} / ${d.totals.channels.toLocaleString('ja-JP')} チャンネル`;
@@ -210,10 +227,27 @@
   }
 
   function createCard(entry) {
-    const card = document.createElement('button');
-    card.type = 'button';
+    // お気に入りトグル(button)を内包するため、カード自体は button にできない
+    // (button のネストは不正)。div + role=button + キーボード操作で代替する
+    const card = document.createElement('div');
     card.className = 'card';
     card.dataset.key = entry.key;
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
+
+    const fav = document.createElement('button');
+    fav.type = 'button';
+    fav.className = 'fav-btn';
+    updateFavButton(fav, IPTVStore.isFavorite(entry.key));
+    fav.addEventListener('click', (e) => {
+      e.stopPropagation(); // プレイヤーを開かない
+      const on = IPTVStore.toggleFavorite(entry.key);
+      updateFavButton(fav, on);
+      updateFavLabel();
+      // お気に入りフィルタ適用中は結果が変わるため再描画(通常時は並びを乱さない)
+      if (state.favOnly) applyFilters();
+    });
+    card.appendChild(fav);
 
     const logoWrap = document.createElement('div');
     logoWrap.className = 'card-logo';
@@ -300,7 +334,21 @@
     card.appendChild(body);
 
     card.addEventListener('click', () => openEntry(entry));
+    card.addEventListener('keydown', (e) => {
+      if (e.target !== card) return; // お気に入りボタン上のキー操作はそちらに任せる
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openEntry(entry);
+      }
+    });
     return card;
+  }
+
+  function updateFavButton(btn, on) {
+    btn.textContent = on ? '★' : '☆';
+    btn.setAttribute('aria-pressed', String(on));
+    btn.setAttribute('aria-label', 'お気に入り');
+    btn.title = on ? 'お気に入りから外す' : 'お気に入りに追加';
   }
 
   // ---- カードの番組表(現在番組 / 次番組) -----------------------------------
@@ -429,6 +477,7 @@
     dom.httpsOnly.addEventListener('change', () => { state.httpsOnly = dom.httpsOnly.checked; applyFilters(); });
     dom.checkedOnly.addEventListener('change', () => { state.checkedOnly = dom.checkedOnly.checked; applyFilters(); });
     dom.epgOnly.addEventListener('change', () => { state.epgOnly = dom.epgOnly.checked; applyFilters(); });
+    dom.favOnly.addEventListener('change', () => { state.favOnly = dom.favOnly.checked; applyFilters(); });
     dom.proxyBase.value = IPTVPlayer.getProxyBase();
     dom.proxySave.addEventListener('click', () => {
       const v = dom.proxyBase.value.trim();
@@ -462,7 +511,11 @@
 
   function start() {
     initDom();
-    IPTVPlayer.init({ onClose: clearHash });
+    IPTVPlayer.init({
+      onClose: clearHash,
+      // 「実際に再生できた」ときだけ履歴に残す(開いただけ・失敗は記録しない)
+      onPlaying: (key) => IPTVStore.recordPlayed(key),
+    });
     bindEvents();
     initObserver();
     startClock();

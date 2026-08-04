@@ -41,6 +41,7 @@
       <select id="sort-order" aria-label="並び順">
         <option value="name">名前順</option>
         <option value="country">国順</option>
+        <option value="recent">最近見た順</option>
       </select>
       <label class="check">
         <input id="https-only" type="checkbox">
@@ -53,6 +54,10 @@
       <label class="check" id="epg-only-label" hidden>
         <input id="epg-only" type="checkbox">
         番組表ありのみ
+      </label>
+      <label class="check" id="fav-only-label">
+        <input id="fav-only" type="checkbox">
+        お気に入りのみ
       </label>
       <button id="shuffle-btn" type="button" class="action-btn">ランダム選局</button>
     </div>
@@ -138,6 +143,7 @@
 
   <script src="assets/js/data.js"></script>
   <script src="assets/js/epg.js"></script>
+  <script src="assets/js/store.js"></script>
   <script src="assets/js/player.js"></script>
   <script src="assets/js/app.js"></script>
 </body>

@@ -26,6 +26,7 @@ const IPTVPlayer = (() => {
   let playToken = 0;
   let lastFocus = null;
   let onCloseCallback = null;
+  let onPlayingCallback = null;
   let m3uUrl = null;
   let nativeRescueTried = false; // hls.js の CORS 失敗後に一度だけネイティブ HLS を試す
   let upgradedFromHttp = false;  // 混在コンテンツ回避の https 昇格を試行中か
@@ -106,6 +107,7 @@ const IPTVPlayer = (() => {
 
   function init(options) {
     onCloseCallback = options && options.onClose ? options.onClose : null;
+    onPlayingCallback = options && options.onPlaying ? options.onPlaying : null;
     dom = {
       modal: document.getElementById('player-modal'),
       video: document.getElementById('player-video'),
@@ -134,6 +136,7 @@ const IPTVPlayer = (() => {
       clearWatchdog();
       const s = currentStream();
       setStatus('● 再生中' + (s && s.quality ? ` (${s.quality})` : ''), 'ok');
+      if (onPlayingCallback && entry) onPlayingCallback(entry.key);
     });
   }
 

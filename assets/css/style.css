@@ -335,6 +335,7 @@ button { font-family: inherit; }
 }
 
 .card {
+  position: relative; /* お気に入りトグルの重ね置き用 */
   display: flex;
   flex-direction: column;
   text-align: left;
@@ -441,6 +442,30 @@ button { font-family: inherit; }
 
 .card-dead { opacity: 0.55; }
 .card-dead:hover { opacity: 1; }
+
+/* ---- お気に入りトグル(カード右上) ---- */
+
+.fav-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--hairline-dark);
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fav-btn:hover { color: var(--ink); background: #ffffff; }
+.fav-btn[aria-pressed='true'] { color: var(--red); border-color: var(--red); }
 
 /* ---- カードの番組表(現在番組 / 次番組) ---- */
 
