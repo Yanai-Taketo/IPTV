@@ -6,6 +6,12 @@ on:
   schedule:
     - cron: '17 3 * * *'
   workflow_dispatch:
+  # プローブ処理自体が変わったとき(および main への初回導入時)にも実行する
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/probe-streams.mjs'
+      - '.github/workflows/probe-playability.yml'
 
 permissions:
   contents: write
