@@ -36,6 +36,7 @@ import {
   selectGuideRows,
   buildChannelsXml,
   convertGuide,
+  formatGrabSummary,
 } from './epg-lib.mjs';
 
 const API_BASE = 'https://iptv-org.github.io/api';
@@ -50,6 +51,8 @@ export function parseArgs(argv) {
     indir: null,
     outdir: 'data/epg',
     playability: 'data/playability.json',
+    summary: null,       // ジョブサマリの出力先(GITHUB_STEP_SUMMARY)
+    attemptedDir: null,  // グラブを試みたサイト一覧(prepare の --split-dir)
     maxSites: DEFAULTS.maxSites,
     maxChannels: DEFAULTS.maxChannels,
     shards: DEFAULTS.shardCount,
@@ -80,6 +83,8 @@ export function parseArgs(argv) {
     else if (rest[i] === '--indir') args.indir = value('--indir');
     else if (rest[i] === '--outdir') args.outdir = value('--outdir');
     else if (rest[i] === '--playability') args.playability = value('--playability');
+    else if (rest[i] === '--summary') args.summary = value('--summary');
+    else if (rest[i] === '--attempted-dir') args.attemptedDir = value('--attempted-dir');
     else if (rest[i] === '--max-sites') args.maxSites = positiveInt('--max-sites');
     else if (rest[i] === '--max-channels') args.maxChannels = positiveInt('--max-channels');
     else if (rest[i] === '--shards') args.shards = positiveInt('--shards');
@@ -224,6 +229,32 @@ export async function convert(args) {
       `${shards.length} detail shards, skipped ${stats.skippedPrograms} bad / ` +
       `${stats.prunedPrograms} ended programs`
   );
+
+  // サイト別実績のジョブサマリ。0 件のサイトは選定枠だけを消費するため、
+  // 人が気づけるよう別立てで並べる(自動デナイリストの入力にもなる)
+  const attempted = args.attemptedDir ? attemptedSites(args.attemptedDir) : [];
+  for (const site of attempted) {
+    if (!stats.perSite.some((r) => r.site === site)) console.log(`::warning::no programmes from ${site}`);
+  }
+  if (args.summary) fs.appendFileSync(args.summary, formatGrabSummary(stats, attempted));
+}
+
+/**
+ * グラブを試みたサイト名の一覧。prepare が --split-dir に出す
+ * `<site>.channels.xml` のファイル名から復元する(ファイル名は
+ * 英数と ._- 以外を _ に置換してあるため、その形のサイト名で照合する)。
+ */
+function attemptedSites(dir) {
+  try {
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith('.channels.xml'))
+      .map((f) => f.slice(0, -'.channels.xml'.length))
+      .sort();
+  } catch (err) {
+    console.log(`note: ${dir} を読めないためサイト別の 0 件判定を省きます`);
+    return [];
+  }
 }
 
 async function run() {

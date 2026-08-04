@@ -6,11 +6,17 @@ on:
   schedule:
     - cron: '17 3 * * *'
   workflow_dispatch:
+    inputs:
+      fail_drop:
+        description: '再生可能率がこの比率を超えて落ちたら中断(0 < r < 1)。上流の実変動で止まったときの手動突破用'
+        default: '0.5'
   # プローブ処理自体が変わったとき(および main への初回導入時)にも実行する
   push:
     branches: [main]
     paths:
       - 'scripts/probe-streams.mjs'
+      - 'scripts/compare-playability.mjs'
+      - 'scripts/playability-report.mjs'
       - '.github/workflows/probe-playability.yml'
 
 permissions:
@@ -38,8 +44,32 @@ jobs:
         with:
           node-version: 22
 
+      # プローブは data/playability.json を上書きするため、比較用に
+      # 前回コミットされたインデックスを先に退避しておく
+      - name: Snapshot previous index
+        run: |
+          if [ -f data/playability.json ]; then
+            cp data/playability.json "$RUNNER_TEMP/playability-prev.json"
+          else
+            echo "no previous index (first run)"
+          fi
+
       - name: Probe all streams
         run: node scripts/probe-streams.mjs --out data/playability.json
+
+      # 前回比をジョブサマリに出し、再生可能率が急落したらここで止める。
+      # 2026-08-04 に playable 5,846 → 751(-87%)の壊れたインデックスが
+      # そのままコミット・デプロイされた実績があるため、コミット前に判定する
+      # (中断すればサイトは前日のインデックスのまま = 壊れた配信をしない)
+      - name: Report change vs previous run
+        env:
+          FAIL_DROP: ${{ github.event.inputs.fail_drop || '0.5' }}
+        run: |
+          node scripts/compare-playability.mjs \
+            --prev "$RUNNER_TEMP/playability-prev.json" \
+            --next data/playability.json \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            --fail-drop "$FAIL_DROP"
 
       - name: Commit updated index
         run: |

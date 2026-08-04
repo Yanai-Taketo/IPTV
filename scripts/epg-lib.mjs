@@ -356,6 +356,8 @@ export function convertGuide(grabJson, opts = {}) {
   const channels = {};
   const shards = Array.from({ length: shardCount }, () => ({}));
   const sites = new Set();
+  // サイト別の実績(ジョブサマリ用。「N 日連続 0 件」の自動デナイリストの土台)
+  const bySite = new Map();
   let programCount = 0;
 
   for (const channelId of [...perChannel.keys()].sort()) {
@@ -363,6 +365,12 @@ export function convertGuide(grabJson, opts = {}) {
     const programs = [...ch.byStart.values()].sort((a, b) => a.start - b.start || a.dur - b.dur);
     if (!programs.length) continue;
     const shard = shardIndex(channelId, shardCount);
+    if (ch.site) {
+      const acc = bySite.get(ch.site) || { site: ch.site, channels: 0, programs: 0 };
+      acc.channels++;
+      acc.programs += programs.length;
+      bySite.set(ch.site, acc);
+    }
     channels[channelId] = {
       site: ch.site,
       feed: ch.feed,
@@ -390,9 +398,51 @@ export function convertGuide(grabJson, opts = {}) {
     channels,
   };
 
+  const perSite = [...bySite.values()].sort(
+    (a, b) => b.programs - a.programs || a.site.localeCompare(b.site)
+  );
+
   return {
     schedule,
     shards,
-    stats: { ...schedule.counts, skippedPrograms, prunedPrograms },
+    stats: { ...schedule.counts, skippedPrograms, prunedPrograms, perSite },
   };
+}
+
+/**
+ * サイト別実績を GitHub Actions のジョブサマリ用 Markdown にする。
+ * attemptedSites を渡すと「グラブしたのに 0 件だったサイト」も表に出す
+ * (ランナー IP のブロックはこの形で現れる — docs/next-features.md §2-1)。
+ */
+export function formatGrabSummary(stats, attemptedSites = []) {
+  const rows = [...stats.perSite];
+  const produced = new Set(rows.map((r) => r.site));
+  const empty = [...attemptedSites].filter((s) => !produced.has(s)).sort();
+  for (const site of empty) rows.push({ site, channels: 0, programs: 0, empty: true });
+
+  const n = (v) => String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const lines = [
+    '## 番組表グラブ結果',
+    '',
+    `チャンネル ${n(stats.channels)} ・ 番組 ${n(stats.programs)} ・ サイト ${n(stats.sites)}` +
+      `(不良 ${n(stats.skippedPrograms)} 件 / 終了済み ${n(stats.prunedPrograms)} 件をスキップ)`,
+    '',
+    '| サイト | チャンネル | 番組 |',
+    '|---|---:|---:|',
+  ];
+  for (const r of rows) {
+    lines.push(`| ${r.empty ? '⚠️ ' : ''}${r.site} | ${n(r.channels)} | ${n(r.programs)} |`);
+  }
+  lines.push('');
+  if (empty.length) {
+    lines.push(
+      `⚠️ 番組が 0 件だったサイト (${empty.length}): ${empty.join(', ')}`,
+      '',
+      '<sub>0 件が続くサイトは ランナー IP ブロックの可能性があります' +
+        '(scripts/epg-lib.mjs の EXCLUDED_SITES を参照)</sub>'
+    );
+  } else if (attemptedSites.length) {
+    lines.push('✅ グラブしたすべてのサイトから番組を取得できました');
+  }
+  return lines.join('\n') + '\n';
 }

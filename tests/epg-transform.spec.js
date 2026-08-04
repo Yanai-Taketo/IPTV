@@ -228,6 +228,57 @@ test.describe('convertGuide', () => {
   });
 });
 
+// ---- サイト別実績(ジョブサマリ) -------------------------------------------
+
+test.describe('perSite / formatGrabSummary', () => {
+  const grab = (site, channel, title) =>
+    makeProgram({ site, channel, titles: [{ value: title }] });
+
+  test('convertGuide がサイト別のチャンネル数・番組数を番組数順で返す', () => {
+    const { stats } = lib.convertGuide(
+      {
+        programs: [
+          grab('a.com', 'A1.jp@SD', 'p1'),
+          grab('a.com', 'A1.jp@SD', 'p2'),
+          grab('a.com', 'A2.jp@SD', 'p3'),
+          grab('b.com', 'B1.us@SD', 'p4'),
+        ].map((p, i) => ({ ...p, start: p.start + i * 3600000, stop: p.stop + i * 3600000 })),
+      },
+      { ...BASE, shardCount: 2 }
+    );
+    expect(stats.perSite).toEqual([
+      { site: 'a.com', channels: 2, programs: 3 },
+      { site: 'b.com', channels: 1, programs: 1 },
+    ]);
+  });
+
+  test('番組が 0 件だったサイトは試行リストとの差から表と警告に出る', () => {
+    const { stats } = lib.convertGuide({ programs: [grab('a.com', 'A1.jp@SD', 'p1')] }, { ...BASE, shardCount: 1 });
+    const md = lib.formatGrabSummary(stats, ['a.com', 'zuragt.mn', 'sat.tv']);
+    expect(md).toContain('| a.com | 1 | 1 |');
+    expect(md).toContain('| ⚠️ sat.tv | 0 | 0 |');
+    expect(md).toContain('| ⚠️ zuragt.mn | 0 | 0 |');
+    expect(md).toContain('⚠️ 番組が 0 件だったサイト (2): sat.tv, zuragt.mn');
+    expect(md).toContain('EXCLUDED_SITES');
+  });
+
+  test('全サイトから取得できたときは 0 件の警告を出さない', () => {
+    const { stats } = lib.convertGuide({ programs: [grab('a.com', 'A1.jp@SD', 'p1')] }, { ...BASE, shardCount: 1 });
+    const md = lib.formatGrabSummary(stats, ['a.com']);
+    expect(md).toContain('✅ グラブしたすべてのサイトから番組を取得できました');
+    expect(md).not.toContain('⚠️');
+  });
+
+  test('試行リストが無くても表は出る(サマリだけの利用)', () => {
+    const { stats } = lib.convertGuide({ programs: [grab('a.com', 'A1.jp@SD', 'p1')] }, { ...BASE, shardCount: 1 });
+    const md = lib.formatGrabSummary(stats);
+    expect(md).toContain('## 番組表グラブ結果');
+    expect(md).toContain('チャンネル 1 ・ 番組 1 ・ サイト 1');
+    expect(md).not.toContain('⚠️');
+    expect(md).not.toContain('✅');
+  });
+});
+
 // ---- decodeEntities ---------------------------------------------------------
 
 test.describe('decodeEntities', () => {
@@ -457,6 +508,14 @@ test.describe('parseArgs', () => {
     expect(() => cli.parseArgs(argv('prepare', '--exclude-sites'))).toThrow('値が必要です');
   });
 
+  test('--summary と --attempted-dir を受け付ける(既定は無効)', () => {
+    expect(cli.parseArgs(['node', 'x', 'convert'])).toMatchObject({ summary: null, attemptedDir: null });
+    expect(
+      cli.parseArgs(['node', 'x', 'convert', '--summary', 's.md', '--attempted-dir', 'd'])
+    ).toMatchObject({ summary: 's.md', attemptedDir: 'd' });
+    expect(() => cli.parseArgs(['node', 'x', 'convert', '--summary'])).toThrow('--summary には値が必要です');
+  });
+
   test('--split-dir と --indir を受け付ける', () => {
     const args = cli.parseArgs(argv('prepare', '--split-dir', 'sites', '--out', 'c.xml'));
     expect(args.splitDir).toBe('sites');
@@ -502,6 +561,42 @@ test.describe('convert --indir', () => {
     const schedule = JSON.parse(fs.readFileSync(pathm.join(outdir, 'schedule.json'), 'utf8'));
     expect(Object.keys(schedule.channels).sort()).toEqual(['AAA.jp', 'BBB.us']);
     expect(schedule.counts).toMatchObject({ channels: 2, programs: 2, sites: 2 });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test('--summary でサイト別実績を書き出し、0 件のサイトを名指しする', async () => {
+    const fs = require('fs');
+    const os = require('os');
+    const pathm = require('path');
+    const tmp = fs.mkdtempSync(pathm.join(os.tmpdir(), 'epg-summary-'));
+    const indir = pathm.join(tmp, 'guides');
+    const attempted = pathm.join(tmp, 'channels');
+    const summary = pathm.join(tmp, 'summary.md');
+    fs.mkdirSync(indir, { recursive: true });
+    fs.mkdirSync(attempted, { recursive: true });
+    const start = Date.now();
+    fs.writeFileSync(
+      pathm.join(indir, 'site-a.json'),
+      JSON.stringify({
+        programs: [
+          { site: 'site-a.com', channel: 'AAA.jp@SD', start, stop: start + 3600000, titles: [{ value: 'S1' }] },
+        ],
+      })
+    );
+    // グラブは試みたが結果が空だったサイト(ランナー IP ブロックの形)
+    fs.writeFileSync(pathm.join(indir, 'site-b.json'), JSON.stringify({ programs: [] }));
+    for (const site of ['site-a.com', 'site-b.com']) {
+      fs.writeFileSync(pathm.join(attempted, `${site}.channels.xml`), '<channels/>');
+    }
+
+    await cli.convert({
+      indir, outdir: pathm.join(tmp, 'out'), in: null, shards: 2, days: 2,
+      summary, attemptedDir: attempted,
+    });
+    const md = fs.readFileSync(summary, 'utf8');
+    expect(md).toContain('| site-a.com | 1 | 1 |');
+    expect(md).toContain('| ⚠️ site-b.com | 0 | 0 |');
+    expect(md).toContain('⚠️ 番組が 0 件だったサイト (1): site-b.com');
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
