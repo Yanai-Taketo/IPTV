@@ -88,11 +88,13 @@ test.describe('ザッピング(前/次選局)', () => {
 
   test('モーダルが閉じているときはショートカットが一切働かない', async ({ page }) => {
     // 一度開いて閉じたあと(= プレイヤーの状態は残っている)でも反応しない
-    await page.locator('.card', { hasText: 'Multi Stream TV' }).click();
+    const card = page.locator('.card', { hasText: 'Multi Stream TV' });
+    await card.click();
     await page.locator('#player-close').click();
     await expect(page.locator('#player-modal')).not.toHaveAttribute('open', '');
+    // 閉じたあとのフォーカス復帰は非同期。落ち着いてからキーを送る
+    await expect(card).toBeFocused();
 
-    await page.locator('#shuffle-btn').blur();
     for (const key of ['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown', 'm', 'f']) {
       await page.keyboard.press(key);
     }
@@ -155,8 +157,12 @@ test.describe('ザッピング(前/次選局)', () => {
   });
 
   test('モーダルを閉じた状態では検索欄のキー入力を一切奪わない', async ({ page }) => {
-    await page.locator('.card', { hasText: 'Multi Stream TV' }).click();
+    const card = page.locator('.card', { hasText: 'Multi Stream TV' });
+    await card.click();
     await page.locator('#player-close').click();
+    // 閉じたあとのフォーカス復帰(非同期)を待たずに検索欄へ移すと、
+    // 復帰がこちらのフォーカスを奪って入力先が変わる
+    await expect(card).toBeFocused();
 
     // m / f はショートカットとして解釈されず、そのまま文字として入る
     await page.locator('#search').focus();
