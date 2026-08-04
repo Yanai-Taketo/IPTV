@@ -730,6 +730,36 @@ button { font-family: inherit; }
   white-space: nowrap;
 }
 
+.player-head-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+
+/* ---- ザッピング(前 / 次の選局) ---- */
+
+.player-nav { display: flex; align-items: center; gap: 6px; }
+
+.player-nav-btn {
+  background: transparent;
+  color: #f2eee4;
+  border: 1px solid var(--modal-line);
+  padding: 6px 11px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.player-nav-btn:hover:not(:disabled) { border-color: var(--red); color: #ff8d84; }
+.player-nav-btn:disabled { opacity: 0.3; cursor: default; }
+
+.player-pos {
+  min-width: 7.5em;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--modal-soft);
+  font-variant-numeric: tabular-nums;
+}
+
 .player-close {
   flex: none;
   background: transparent;
@@ -769,6 +799,23 @@ button { font-family: inherit; }
 }
 
 .unmute-btn:hover { border-color: var(--red); }
+
+/* 音量・ミュートの一時表示(再生状態のステータス行を潰さないため) */
+.player-osd {
+  position: absolute;
+  right: 12px;
+  bottom: 52px;
+  margin: 0;
+  background: rgba(18, 16, 12, 0.85);
+  color: #f2eee4;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  padding: 6px 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
 
 .player-status {
   min-height: 1.5em;
@@ -826,6 +873,28 @@ button { font-family: inherit; }
   color: #f2eee4;
   opacity: 0.4;
   text-decoration: line-through;
+}
+
+/* ---- キーボードショートカットの凡例 ---- */
+
+.player-shortcuts {
+  margin: -6px 18px 14px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--modal-soft);
+}
+
+.player-shortcuts kbd {
+  display: inline-block;
+  min-width: 1.5em;
+  margin-right: 2px;
+  padding: 1px 4px;
+  text-align: center;
+  border: 1px solid var(--modal-line);
+  font-family: inherit;
+  font-size: 10px;
+  color: #f2eee4;
 }
 
 /* ---- プレイヤーの番組表(EPG)パネル ---- */
@@ -997,6 +1066,13 @@ button { font-family: inherit; }
     border-left: none; /* .toolbar > * の区切り線はパネル自身には不要 */
   }
   .toolbar.filters-open .toolbar-filters > :first-child { border-left: none; }
+
+  /* 狭い画面ではヘッダーが 2 段にならないよう位置表示を落とし、
+     ボタン(◀ ▶)だけ残す。物理キーボードが無い前提で凡例も隠す */
+  .player-head { padding: 11px 14px; gap: 8px; }
+  .player-head-actions { gap: 6px; }
+  .player-pos { display: none; }
+  .player-shortcuts { display: none; }
 
   .grid { margin: 0 12px 20px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
   .grid-head { margin: 14px 12px 6px; }

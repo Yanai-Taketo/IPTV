@@ -11,6 +11,9 @@ const IPTVPlayer = (() => {
   const DASH_SRI = 'sha384-DUqWPzOl/i7/DGF7SBoe4NrlZOMxxomlJsg3X0daS5SBeFxco3dmwWQPFr2oauXn';
   const WATCHDOG_MS = 25000;
   const PROXY_KEY = 'iptv:proxy-base';
+  const VOLUME_PREF = 'volume';
+  const VOLUME_STEP = 0.1;
+  const OSD_MS = 1400;
 
   let dom = null;
   let hls = null;
@@ -27,6 +30,11 @@ const IPTVPlayer = (() => {
   let lastFocus = null;
   let onCloseCallback = null;
   let onPlayingCallback = null;
+  let onNavigateCallback = null;
+  // ユーザーが意図して切ったミュート。自動再生フォールバックのミュート(一時的)と
+  // 区別し、ザッピングで選局し直しても引き継ぐ
+  let mutedByUser = false;
+  let osdTimer = 0;
   let m3uUrl = null;
   let nativeRescueTried = false; // hls.js の CORS 失敗後に一度だけネイティブ HLS を試す
   let upgradedFromHttp = false;  // 混在コンテンツ回避の https 昇格を試行中か
@@ -108,8 +116,10 @@ const IPTVPlayer = (() => {
   function init(options) {
     onCloseCallback = options && options.onClose ? options.onClose : null;
     onPlayingCallback = options && options.onPlaying ? options.onPlaying : null;
+    onNavigateCallback = options && options.onNavigate ? options.onNavigate : null;
     dom = {
       modal: document.getElementById('player-modal'),
+      stage: document.getElementById('player-stage'),
       video: document.getElementById('player-video'),
       flag: document.getElementById('player-flag'),
       title: document.getElementById('player-title'),
@@ -120,6 +130,11 @@ const IPTVPlayer = (() => {
       error: document.getElementById('player-error'),
       errorActions: document.getElementById('player-error-actions'),
       unmute: document.getElementById('player-unmute'),
+      osd: document.getElementById('player-osd'),
+      nav: document.getElementById('player-nav'),
+      prev: document.getElementById('player-prev'),
+      next: document.getElementById('player-next'),
+      pos: document.getElementById('player-pos'),
       close: document.getElementById('player-close'),
     };
 
@@ -129,15 +144,204 @@ const IPTVPlayer = (() => {
       if (e.target === dom.modal) close();
     });
     dom.unmute.addEventListener('click', () => {
+      mutedByUser = false;
       dom.video.muted = false;
       dom.unmute.hidden = true;
     });
+    dom.prev.addEventListener('click', () => navigate(-1));
+    dom.next.addEventListener('click', () => navigate(1));
+    document.addEventListener('keydown', handleKeydown);
     dom.video.addEventListener('playing', () => {
       clearWatchdog();
       const s = currentStream();
       setStatus('● 再生中' + (s && s.quality ? ` (${s.quality})` : ''), 'ok');
       if (onPlayingCallback && entry) onPlayingCallback(entry.key);
     });
+  }
+
+  // ---- ザッピング(前 / 次の選局) --------------------------------------------
+  //
+  // 一覧の並び(state.filtered)そのものを巡回する。どの位置にいるかは
+  // アプリ側から setNav() で受け取る — プレイヤーはチャンネル一覧を持たない。
+
+  function navigate(delta) {
+    if (!onNavigateCallback || !entry) return;
+    onNavigateCallback(delta);
+  }
+
+  /**
+   * 現在位置を反映する。nav = {index(0 始まり), total} / 位置不明なら null
+   * (一覧の外にあるチャンネルをディープリンクで開いた場合など)。
+   * アプリ側はフィルタが変わるたびに呼び直す。
+   */
+  function setNav(nav) {
+    if (!dom || !dom.nav) return;
+    const usable = Boolean(onNavigateCallback && nav && nav.total > 1 && nav.index >= 0);
+    dom.nav.hidden = !usable;
+    if (!usable) return;
+    dom.pos.textContent = `${nav.index + 1} / ${nav.total} ch`;
+    dom.prev.disabled = nav.index <= 0;
+    dom.next.disabled = nav.index >= nav.total - 1;
+  }
+
+  function isOpen() {
+    return Boolean(dom && dom.modal.open);
+  }
+
+  function currentKey() {
+    return entry ? entry.key : null;
+  }
+
+  // ---- 音量 / ミュート / 全画面 -----------------------------------------------
+
+  function prefs() {
+    return typeof IPTVStore !== 'undefined' ? IPTVStore : null;
+  }
+
+  /** 保存済み音量(0–1)。未保存・不正値なら null */
+  function storedVolume() {
+    const store = prefs();
+    if (!store) return null;
+    const v = store.getPref(VOLUME_PREF, null);
+    return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1 ? v : null;
+  }
+
+  /** 画面上の一時表示(音量・ミュート)。再生状態のステータス行は潰さない */
+  function showOsd(text) {
+    if (!dom.osd) return;
+    dom.osd.textContent = text;
+    dom.osd.hidden = false;
+    clearTimeout(osdTimer);
+    osdTimer = setTimeout(() => { dom.osd.hidden = true; }, OSD_MS);
+  }
+
+  function volumeLabel() {
+    return `音量 ${Math.round(dom.video.volume * 100)}%`;
+  }
+
+  function adjustVolume(delta) {
+    // 浮動小数の累積誤差で 0.30000000000000004 のような値にならないよう丸める
+    const v = Math.max(0, Math.min(1, Math.round((dom.video.volume + delta) * 100) / 100));
+    dom.video.volume = v;
+    if (v > 0 && dom.video.muted) {
+      mutedByUser = false;
+      dom.video.muted = false;
+      dom.unmute.hidden = true;
+    }
+    const store = prefs();
+    if (store) store.setPref(VOLUME_PREF, v);
+    showOsd(dom.video.muted ? 'ミュート' : volumeLabel());
+  }
+
+  function toggleMute() {
+    mutedByUser = !dom.video.muted;
+    dom.video.muted = mutedByUser;
+    dom.unmute.hidden = !dom.video.muted;
+    showOsd(dom.video.muted ? 'ミュート' : volumeLabel());
+  }
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      return;
+    }
+    // オーバーレイ(ミュート解除・OSD)ごと全画面にしたいのでステージを使う。
+    // iOS Safari は video 要素の専用 API しか持たないためそちらへ落とす
+    if (dom.stage && dom.stage.requestFullscreen) dom.stage.requestFullscreen().catch(() => {});
+    else if (dom.video.webkitEnterFullscreen) dom.video.webkitEnterFullscreen();
+  }
+
+  // ---- キーボードショートカット ----------------------------------------------
+  //
+  // 対象はプレイヤーが開いている間だけ(閉じているときは一覧側の操作 —
+  // 検索・矢印キーでのスクロール — を一切奪わない)。検索欄・プロキシ欄など
+  // 入力中のキーも横取りしない。
+
+  const EDITABLE_TAGS = /^(input|textarea|select)$/i;
+
+  function isEditingTarget(el) {
+    return Boolean(el && (EDITABLE_TAGS.test(el.tagName) || el.isContentEditable));
+  }
+
+  function handleKeydown(e) {
+    if (!isOpen()) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (isEditingTarget(e.target)) return;
+    switch (e.key) {
+      // 選局は押しっぱなしで連続実行しない(1 回ごとに接続をやり直すため)
+      case 'ArrowLeft':
+        if (e.repeat) return;
+        navigate(-1);
+        break;
+      case 'ArrowRight':
+        if (e.repeat) return;
+        navigate(1);
+        break;
+      case 'ArrowUp':
+        adjustVolume(VOLUME_STEP);
+        break;
+      case 'ArrowDown':
+        adjustVolume(-VOLUME_STEP);
+        break;
+      case 'm':
+      case 'M':
+        toggleMute();
+        break;
+      case 'f':
+      case 'F':
+        toggleFullscreen();
+        break;
+      default:
+        return;
+    }
+    // ネイティブの video コントロール(矢印キーでのシーク・音量)と二重に
+    // 効かないよう、扱ったキーだけ既定動作を止める
+    e.preventDefault();
+  }
+
+  // ---- Media Session(ロック画面・メディアキー) -------------------------------
+
+  function mediaSessionAvailable() {
+    return typeof navigator !== 'undefined' && 'mediaSession' in navigator &&
+      typeof window.MediaMetadata === 'function';
+  }
+
+  /** ロック画面等に出すメタデータ。現在番組があればそれを主役にする */
+  function updateMediaSession() {
+    if (!mediaSessionAvailable()) return;
+    if (!entry) {
+      navigator.mediaSession.metadata = null;
+      return;
+    }
+    let title = entry.name;
+    let artist = entry.countryName || '';
+    if (epgAvailable()) {
+      const { current } = IPTVEpg.nowNext(IPTVEpg.get(entry.key).p, Math.floor(Date.now() / 1000));
+      if (current) {
+        title = current.title;
+        artist = entry.name;
+      }
+    }
+    try {
+      navigator.mediaSession.metadata = new window.MediaMetadata({
+        title,
+        artist,
+        album: entry.countryName || '',
+        artwork: entry.logo ? [{ src: entry.logo }] : [],
+      });
+    } catch (err) { /* メタデータ生成に失敗しても再生自体は続ける */ }
+  }
+
+  function setMediaSessionHandlers(on) {
+    if (!mediaSessionAvailable() || !navigator.mediaSession.setActionHandler) return;
+    for (const [action, delta] of [['previoustrack', -1], ['nexttrack', 1]]) {
+      try {
+        navigator.mediaSession.setActionHandler(
+          action,
+          on && onNavigateCallback ? () => navigate(delta) : null
+        );
+      } catch (err) { /* 未対応アクションは無視(仕様上 TypeError になり得る) */ }
+    }
   }
 
   function currentStream() {
@@ -191,19 +395,26 @@ const IPTVPlayer = (() => {
     tried = new Set();
     failReasons = new Map();
     autoAdvance = true;
-    lastFocus = document.activeElement;
+    // ザッピングで開き直したときに、モーダル内のボタンを復帰先として
+    // 覚えてしまわない(閉じたあとフォーカスが行方不明になる)
+    if (!dom.modal.open) lastFocus = document.activeElement;
 
     dom.flag.textContent = entry.flag || '🌐';
     dom.title.textContent = entry.name;
     renderMeta();
     dom.error.hidden = true;
-    dom.unmute.hidden = true;
-    // 前回の自動再生フォールバックで残ったミュート状態を持ち越さない
-    dom.video.muted = false;
+    // 前回の自動再生フォールバックで残ったミュートは持ち越さず、
+    // ユーザーが自分で切ったミュートだけを引き継ぐ
+    dom.video.muted = mutedByUser;
+    dom.unmute.hidden = !mutedByUser;
+    const vol = storedVolume();
+    if (vol !== null) dom.video.volume = vol;
 
     renderVariants();
     renderEpg();
     startEpgTimer();
+    updateMediaSession();
+    setMediaSessionHandlers(true);
     if (!dom.modal.open) dom.modal.showModal();
     if (!entry.streams.length) {
       // 配信 URL 未登録のチャンネル: 再生は試みず、情報表示のみ
@@ -223,8 +434,13 @@ const IPTVPlayer = (() => {
   function handleDialogClose() {
     teardown();
     stopEpgTimer();
+    setMediaSessionHandlers(false);
     entry = null;
+    updateMediaSession(); // entry を消してから呼ぶ = メタデータの解除
     currentIndex = -1;
+    setNav(null);
+    clearTimeout(osdTimer);
+    if (dom.osd) dom.osd.hidden = true;
     if (dom.epg) {
       dom.epg.hidden = true;
       dom.epg.textContent = '';
@@ -310,6 +526,7 @@ const IPTVPlayer = (() => {
     epgTimer = setInterval(() => {
       renderMeta();
       renderEpg();
+      updateMediaSession(); // 番組が変われば通知センター側の表示も追従させる
     }, EPG_REFRESH_MS);
   }
 
@@ -723,5 +940,5 @@ const IPTVPlayer = (() => {
     return lines.join('\n') + '\n';
   }
 
-  return { init, open, close, classifyUrl, getProxyBase, setProxyBase };
+  return { init, open, close, setNav, isOpen, currentKey, classifyUrl, getProxyBase, setProxyBase };
 })();

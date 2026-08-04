@@ -291,6 +291,8 @@
       dom.empty.hidden = state.filtered.length > 0;
     }
     renderChunk();
+    // モーダルを開いたままフィルタが変わることがある(検索・お気に入り解除など)
+    syncPlayerNav();
   }
 
   // ---- グリッド描画 ----------------------------------------------------------
@@ -709,6 +711,36 @@
   function openEntry(entry) {
     history.replaceState(null, '', `#play=${encodeURIComponent(entry.key)}`);
     IPTVPlayer.open(entry);
+    syncPlayerNav();
+  }
+
+  // ---- ザッピング(前 / 次の選局) --------------------------------------------
+  //
+  // 巡回する並びは state.filtered そのもの — お気に入り先頭・最近見た順などの
+  // 並べ替えが効いた「画面に見えている順」で選局する。一覧の外にあるチャンネル
+  // (ディープリンクで開いた後にフィルタを変えた場合など)では位置が定まらない
+  // ため、前/次の操作を無効にする。
+
+  /** 再生中チャンネルの一覧内での位置。一覧に無ければ -1 */
+  function playingIndex() {
+    const key = IPTVPlayer.currentKey();
+    if (key === null) return -1;
+    return state.filtered.findIndex((e) => e.key === key);
+  }
+
+  /** プレイヤーの位置表示とボタン活性を現在のフィルタ結果に合わせる */
+  function syncPlayerNav() {
+    if (!IPTVPlayer.isOpen()) return;
+    const index = playingIndex();
+    IPTVPlayer.setNav(index === -1 ? null : { index, total: state.filtered.length });
+  }
+
+  function navigateChannel(delta) {
+    const index = playingIndex();
+    if (index === -1) return;
+    const next = index + delta;
+    if (next < 0 || next >= state.filtered.length) return; // 端では止まる(巡回しない)
+    openEntry(state.filtered[next]);
   }
 
   function openFromHash() {
@@ -721,7 +753,10 @@
       return; // 壊れたパーセントエンコーディングは黙って無視する
     }
     const entry = state.data.entries.find((e) => e.key === key);
-    if (entry) IPTVPlayer.open(entry);
+    if (entry) {
+      IPTVPlayer.open(entry);
+      syncPlayerNav();
+    }
   }
 
   function clearHash() {
@@ -799,6 +834,8 @@
       onClose: clearHash,
       // 「実際に再生できた」ときだけ履歴に残す(開いただけ・失敗は記録しない)
       onPlaying: (key) => IPTVStore.recordPlayed(key),
+      // ザッピング: 前/次ボタン・矢印キー・メディアキーから呼ばれる
+      onNavigate: navigateChannel,
     });
     bindEvents();
     initObserver();
