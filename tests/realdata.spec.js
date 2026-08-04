@@ -51,9 +51,9 @@ test.describe('実データスナップショット(4 万チャンネル)', () =
     await page.goto('/');
     await expect(page.locator('#app')).toBeVisible({ timeout: 60000 });
 
-    // 規模の検証: ストリームを持つチャンネルは 1 万件前後
+    // 規模の検証: ストリーム未登録も含む全チャンネル(約 4 万件)を表示する
     const totals = await page.evaluate(() => window.__IPTV__.state.data.totals);
-    expect(totals.channels).toBeGreaterThan(5000);
+    expect(totals.channels).toBeGreaterThan(30000);
     expect(totals.countries).toBeGreaterThan(100);
 
     // グリッドは遅延描画でも最初のチャンクが表示される
@@ -84,12 +84,12 @@ test.describe('実データスナップショット(4 万チャンネル)', () =
     await expect(page.locator('#player-status')).not.toHaveText('');
     await page.locator('#player-close').click();
 
-    // NSFW チャンネルが含まれていない
-    const nsfwLeak = await page.evaluate(() => {
+    // NSFW チャンネルも表示対象に含まれ、18+ バッジ用のフラグが立っている
+    const nsfwCount = await page.evaluate(() => {
       const entries = window.__IPTV__.state.data.entries;
-      return entries.filter((e) => /xxx|porn|adult tv/i.test(e.name)).length;
+      return entries.filter((e) => e.isNsfw).length;
     });
-    expect(nsfwLeak).toBe(0);
+    expect(nsfwCount).toBeGreaterThan(0);
   });
 
   test('スクロールで追加チャンクが遅延描画される', async ({ page }) => {

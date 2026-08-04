@@ -232,7 +232,8 @@
       }
       if (state.category && !e.categories.includes(state.category)) return false;
       if (state.language && !e.languages.includes(state.language)) return false;
-      if (state.httpsOnly && !e.hasHttps) return false;
+      // HTTPS のみ: 再生手段の絞り込みなので、配信を持たないチャンネルには適用しない
+      if (state.httpsOnly && e.streams.length && !e.hasHttps) return false;
       if (state.checkedOnly && e.playability !== 'ok') return false;
       if (state.epgOnly && !IPTVEpg.get(e.key)) return false;
       if (state.favOnly && !IPTVStore.isFavorite(e.key)) return false;
@@ -242,9 +243,10 @@
       return true;
     });
 
-    // お気に入りを常に先頭へ。その中では再生確認済み → 未確認 → 応答なし、の順
+    // お気に入りを常に先頭へ。その中では再生確認済み → 未確認 → 応答なし → 配信なし、の順
     const frank = (e) => (IPTVStore.isFavorite(e.key) ? 0 : 1);
-    const prank = (e) => (e.playability === 'ok' ? 0 : e.playability === 'dead' ? 2 : 1);
+    const prank = (e) =>
+      !e.streams.length ? 3 : e.playability === 'ok' ? 0 : e.playability === 'dead' ? 2 : 1;
     if (state.sort === 'recent') {
       // 最近見た順: 再生できた履歴が新しいものから。履歴が無いものは通常の名前順
       const ranks = IPTVStore.historyRanks();
@@ -360,10 +362,24 @@
       body.appendChild(epg);
     }
 
-    if (entry.playability === 'dead') card.classList.add('card-dead');
+    if (entry.playability === 'dead' || !entry.streams.length) card.classList.add('card-dead');
 
     const badges = document.createElement('div');
     badges.className = 'card-badges';
+    if (!entry.streams.length) {
+      const ns = document.createElement('span');
+      ns.className = 'badge';
+      ns.textContent = '配信なし';
+      ns.title = '配信 URL が未登録のチャンネルです(チャンネル情報のみ)';
+      badges.appendChild(ns);
+    }
+    if (entry.isNsfw) {
+      const nb = document.createElement('span');
+      nb.className = 'badge warn';
+      nb.textContent = '18+';
+      nb.title = 'アダルトコンテンツを含む可能性のあるチャンネルです';
+      badges.appendChild(nb);
+    }
     if (entry.playability === 'ok') {
       const okb = document.createElement('span');
       okb.className = 'badge ok';
@@ -697,9 +713,10 @@
       dom.proxyStatus.textContent = v ? `プロキシを設定しました: ${v}` : 'プロキシ設定を解除しました';
     });
     dom.shuffle.addEventListener('click', () => {
-      if (!state.filtered.length) return;
-      const entry = state.filtered[Math.floor(Math.random() * state.filtered.length)];
-      openEntry(entry);
+      // ランダム選局は「再生できる可能性のある」チャンネルから選ぶ(配信なしは除く)
+      const pool = state.filtered.filter((e) => e.streams.length);
+      if (!pool.length) return;
+      openEntry(pool[Math.floor(Math.random() * pool.length)]);
     });
     dom.viewToggle.addEventListener('click', () => {
       state.view = state.view === 'timeline' ? 'cards' : 'timeline';

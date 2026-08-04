@@ -34,17 +34,19 @@ test.describe('再生可能性インデックス連携', () => {
   });
 
   test('再生確認済みのみフィルタ', async ({ page }) => {
-    // ok = NHK / Multi(バックアップが確認済) / Progressive / Orphan の 4 件
+    // ok = NHK / Multi(バックアップが確認済)/ Progressive / Orphan / Adult(NHK と同一 URL)の 5 件
     await expect(page.locator('#checked-only-label')).toBeVisible();
     await page.check('#checked-only');
-    await expect(page.locator('.card')).toHaveCount(4);
+    await expect(page.locator('.card')).toHaveCount(5);
     await expect(page.locator('.card', { hasText: 'US News Channel' })).toHaveCount(0);
     await expect(page.locator('.card', { hasText: 'Http Only TV' })).toHaveCount(0);
   });
 
-  test('一覧は確認済み → 未確認 → 応答なしの順に並ぶ', async ({ page }) => {
-    await expect(page.locator('.card-name').first()).toHaveText('Multi Stream TV'); // 確認済み内で名前順
-    await expect(page.locator('.card-name').last()).toHaveText('US News Channel'); // 応答なしは最後
+  test('一覧は確認済み → 未確認 → 応答なし → 配信なしの順に並ぶ', async ({ page }) => {
+    await expect(page.locator('.card-name').first()).toHaveText('Adult Channel'); // 確認済み内で名前順
+    await expect(page.locator('.card-name').last()).toHaveText('No Stream TV'); // 配信なしは最後尾
+    // 応答なし(dead)は配信なしグループの直前
+    await expect(page.locator('.card-name').nth(-2)).toHaveText('US News Channel');
   });
 
   test('チャンネル内では確認済みストリームを最初に試す', async ({ page }) => {

@@ -26,7 +26,7 @@ test.describe('地域フィルタ + 現地時刻', () => {
     const region = page.locator('#filter-region');
     await expect(region).toBeVisible();
     const labels = await region.locator('option').allTextContents();
-    expect(labels).toEqual(['すべての地域', 'Asia (3)', 'North America (3)']);
+    expect(labels).toEqual(['すべての地域', 'Asia (3)', 'North America (4)']);
   });
 
   test('地域で絞り込める(国フィルタとは独立に併用可)', async ({ page }) => {
@@ -75,7 +75,7 @@ test.describe('地域・タイムゾーンデータが無い環境', () => {
     await page.goto('/');
     await expect(page.locator('#app')).toBeVisible();
     await expect(page.locator('#filter-region')).toBeHidden();
-    await expect(page.locator('.card')).toHaveCount(7);
+    await expect(page.locator('.card')).toHaveCount(9);
   });
 
   test('feeds.json が 404 なら現地時刻 UI ごと消える(グレースフル)', async ({ page }) => {
