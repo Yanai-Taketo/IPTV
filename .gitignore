@@ -4,3 +4,5 @@ playwright-report/
 *.log
 .DS_Store
 tests/fixtures/realdata/
+# 番組表データは epg-data ブランチで管理する(main にはコミットしない)
+data/epg/

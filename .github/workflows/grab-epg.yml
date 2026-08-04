@@ -1,0 +1,112 @@
+name: Grab EPG data
+
+# 電子番組表 (data/epg/) を毎日更新する。iptv-org は番組データ自体を
+# ホストしていないため、公式グラバー iptv-org/epg をここで実行し、
+# 「再生確認済み × ガイドあり」のチャンネルの番組表を静的 JSON 化する。
+# schedule はデフォルトブランチ上のワークフローのみ実行される点に注意。
+on:
+  schedule:
+    # 再生可能性プローブ (03:17 UTC) の後に走らせ、最新のインデックスで選定する
+    - cron: '7 5 * * *'
+  workflow_dispatch:
+    inputs:
+      days:
+        description: '取得日数'
+        default: '2'
+      max_connections:
+        description: 'グラバーの同時接続数'
+        default: '10'
+  # パイプライン自体が変わったとき(および main への初回導入時)にも実行する
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/grab-epg.mjs'
+      - 'scripts/epg-lib.mjs'
+      - '.github/workflows/grab-epg.yml'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: grab-epg
+  cancel-in-progress: false
+
+env:
+  EPG_DAYS: ${{ github.event.inputs.days || '2' }}
+  EPG_MAX_CONNECTIONS: ${{ github.event.inputs.max_connections || '10' }}
+
+jobs:
+  grab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Select channels (playable x guided)
+        run: node scripts/grab-epg.mjs prepare --out data/epg/channels.xml
+
+      - name: Clone iptv-org/epg grabber
+        run: git clone --depth 1 https://github.com/iptv-org/epg.git "$RUNNER_TEMP/epg"
+
+      - name: Install grabber dependencies
+        working-directory: ${{ runner.temp }}/epg
+        run: npm ci --no-audit --no-fund
+
+      - name: Grab programme data
+        working-directory: ${{ runner.temp }}/epg
+        run: |
+          npm run grab --- \
+            --channels="$GITHUB_WORKSPACE/data/epg/channels.xml" \
+            --output="$RUNNER_TEMP/guide.xml" \
+            --json="$RUNNER_TEMP/guide.json" \
+            --days="$EPG_DAYS" \
+            --maxConnections="$EPG_MAX_CONNECTIONS"
+
+      - name: Convert to compact schedule + detail shards
+        run: node scripts/grab-epg.mjs convert --in "$RUNNER_TEMP/guide.json" --outdir data/epg --days "$EPG_DAYS"
+
+      # main には置かず、履歴を持たない epg-data ブランチへ毎回作り直して
+      # force-push する(毎日 15MB 級のデータをコミットすると履歴が年 1GB 超
+      # 肥大するため)。他のワークフローはデプロイ直前にこのブランチから
+      # data/epg を取り出してサイトに同梱する。
+      - name: Publish EPG data to the epg-data branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          pub="$RUNNER_TEMP/epg-publish"
+          mkdir -p "$pub/data"
+          cp -r data/epg "$pub/data/"
+          cd "$pub"
+          git init -q -b epg-data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Update EPG data"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" epg-data
+
+      # 番組表の更新をサイトに反映するデプロイ(生成済みの data/epg を含む
+      # ワークスペースをそのまま配信する)。まれに他ワークフローのデプロイと
+      # 同時になると片方が失敗し得るが、翌日の実行で自然回復する
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

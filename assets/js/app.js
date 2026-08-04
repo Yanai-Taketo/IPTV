@@ -17,9 +17,12 @@
     language: '',
     httpsOnly: PAGE_HTTPS, // HTTPS ページでは HTTP 配信は再生不可のため既定でオン
     checkedOnly: false,
+    epgOnly: false,
     sort: 'name',
     filtered: [],
     rendered: 0,
+    entriesByKey: null, // 番組表の定期更新でカード → エントリを引くための索引
+    epgCount: 0,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -42,6 +45,8 @@
       httpsOnly: $('https-only'),
       checkedOnly: $('checked-only'),
       checkedOnlyLabel: $('checked-only-label'),
+      epgOnly: $('epg-only'),
+      epgOnlyLabel: $('epg-only-label'),
       gridHeadNote: $('grid-head-note'),
       proxyBase: $('proxy-base'),
       proxySave: $('proxy-save'),
@@ -56,10 +61,14 @@
 
   // ---- 読み込み画面 ----------------------------------------------------------
 
+  // 読み込み画面に出す表示名(epg のみ実ファイル名がモジュール名と異なる)
+  const LOAD_LABELS = { epg: 'epg/schedule.json' };
+  const loadLabel = (name) => LOAD_LABELS[name] || `${name}.json`;
+
   function progressItem(name) {
     const li = document.createElement('li');
     li.id = `progress-${name}`;
-    li.textContent = `${name}.json …`;
+    li.textContent = `${loadLabel(name)} …`;
     dom.loadingList.appendChild(li);
     return li;
   }
@@ -69,15 +78,21 @@
     dom.loadError.hidden = true;
     dom.loadingList.textContent = '';
     const items = {};
-    for (const name of ['channels', 'streams', 'feeds', 'logos', 'countries', 'categories', 'languages', 'playability']) {
+    for (const name of ['channels', 'streams', 'feeds', 'logos', 'countries', 'categories', 'languages', 'playability', 'epg']) {
       items[name] = progressItem(name);
     }
+    const onProgress = (name, ok) => {
+      const li = items[name];
+      if (li) li.textContent = `${loadLabel(name)} ${ok ? '✓' : '✕ (スキップ)'}`;
+    };
     try {
-      const data = await IPTVData.loadAll((name, ok) => {
-        const li = items[name];
-        if (li) li.textContent = `${name}.json ${ok ? '✓' : '✕ (スキップ)'}`;
-      });
+      // 番組表(EPG)は任意データ: 取得失敗(未生成の環境)でもアプリは動く
+      const [data] = await Promise.all([IPTVData.loadAll(onProgress), IPTVEpg.load(onProgress)]);
       state.data = data;
+      state.entriesByKey = new Map(data.entries.map((e) => [e.key, e]));
+      state.epgCount = IPTVEpg.isLoaded()
+        ? data.entries.reduce((n, e) => n + (IPTVEpg.get(e.key) ? 1 : 0), 0)
+        : 0;
       dom.loading.hidden = true;
       dom.app.hidden = false;
       buildFilters();
@@ -118,18 +133,35 @@
 
     dom.httpsOnly.checked = state.httpsOnly;
 
+    const fmtStamp = (at) =>
+      at.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const noteParts = [];
+
     // 再生可能性インデックスがある場合のみフィルタと確認時刻を表示
     if (d.playabilityMeta) {
       dom.checkedOnlyLabel.hidden = false;
       dom.checkedOnlyLabel.lastChild.textContent = ` 再生確認済みのみ (${d.totals.checkedOk.toLocaleString('ja-JP')})`;
       dom.checkedOnly.checked = state.checkedOnly;
       const at = new Date(d.playabilityMeta.generatedAt);
-      if (!Number.isNaN(at.getTime())) {
-        dom.gridHeadNote.textContent = `再生確認 ${at.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
-      }
+      if (!Number.isNaN(at.getTime())) noteParts.push(`再生確認 ${fmtStamp(at)}`);
     } else {
       dom.checkedOnlyLabel.hidden = true;
     }
+
+    // 番組表(EPG)データがある場合のみフィルタと取得時刻を表示
+    if (state.epgCount > 0) {
+      dom.epgOnlyLabel.hidden = false;
+      dom.epgOnlyLabel.lastChild.textContent = ` 番組表ありのみ (${state.epgCount.toLocaleString('ja-JP')})`;
+      dom.epgOnly.checked = state.epgOnly;
+      const meta = IPTVEpg.getMeta();
+      if (meta && meta.generatedAt && !Number.isNaN(meta.generatedAt.getTime())) {
+        noteParts.push(`番組表 ${fmtStamp(meta.generatedAt)}`);
+      }
+    } else {
+      dom.epgOnlyLabel.hidden = true;
+    }
+
+    if (noteParts.length) dom.gridHeadNote.textContent = noteParts.join(' ・ ');
   }
 
   // ---- フィルタリング --------------------------------------------------------
@@ -145,6 +177,7 @@
       if (state.language && !e.languages.includes(state.language)) return false;
       if (state.httpsOnly && !e.hasHttps) return false;
       if (state.checkedOnly && e.playability !== 'ok') return false;
+      if (state.epgOnly && !IPTVEpg.get(e.key)) return false;
       for (const t of tokens) {
         if (e.haystack.indexOf(t) === -1) return false;
       }
@@ -220,6 +253,13 @@
     meta.textContent = `${entry.flag} ${entry.countryName}${catNames ? ' · ' + catNames : ''}`;
     body.appendChild(meta);
 
+    if (IPTVEpg.get(entry.key)) {
+      const epg = document.createElement('div');
+      epg.className = 'card-epg';
+      updateCardEpg(epg, entry);
+      body.appendChild(epg);
+    }
+
     if (entry.playability === 'dead') card.classList.add('card-dead');
 
     const badges = document.createElement('div');
@@ -261,6 +301,58 @@
 
     card.addEventListener('click', () => openEntry(entry));
     return card;
+  }
+
+  // ---- カードの番組表(現在番組 / 次番組) -----------------------------------
+
+  function updateCardEpg(el, entry) {
+    const ch = IPTVEpg.get(entry.key);
+    if (!ch) {
+      el.hidden = true;
+      return;
+    }
+    const nowSec = Math.floor(Date.now() / 1000);
+    const { current, next } = IPTVEpg.nowNext(ch.p, nowSec);
+    el.textContent = '';
+    el.hidden = false;
+
+    if (current) {
+      const title = document.createElement('span');
+      title.className = 'card-epg-title';
+      title.textContent = `▶ ${current.title}`;
+      el.appendChild(title);
+
+      const time = document.createElement('span');
+      time.className = 'card-epg-time';
+      time.textContent = IPTVEpg.fmtRange(current.start, current.dur);
+      el.appendChild(time);
+
+      const bar = document.createElement('div');
+      bar.className = 'epg-bar';
+      bar.setAttribute('aria-hidden', 'true');
+      const fill = document.createElement('i');
+      fill.style.width = `${IPTVEpg.progressPercent(current.start, current.dur, nowSec)}%`;
+      bar.appendChild(fill);
+      el.appendChild(bar);
+    } else if (next) {
+      const title = document.createElement('span');
+      title.className = 'card-epg-title card-epg-next';
+      title.textContent = `次 ${IPTVEpg.fmtTime(next.start)} ${next.title}`;
+      el.appendChild(title);
+    } else {
+      // 番組表はあるが提供期間外(データが古い)— 行ごと隠す
+      el.hidden = true;
+    }
+  }
+
+  // 描画済みカードの現在番組表示を定期更新する(番組境界・進捗バーの追従)
+  function refreshEpgCards() {
+    if (!state.entriesByKey || !IPTVEpg.isLoaded()) return;
+    for (const el of dom.grid.querySelectorAll('.card-epg')) {
+      const card = el.closest('.card');
+      const entry = card ? state.entriesByKey.get(card.dataset.key) : null;
+      if (entry) updateCardEpg(el, entry);
+    }
   }
 
   function renderChunk() {
@@ -336,6 +428,7 @@
     dom.sort.addEventListener('change', () => { state.sort = dom.sort.value; applyFilters(); });
     dom.httpsOnly.addEventListener('change', () => { state.httpsOnly = dom.httpsOnly.checked; applyFilters(); });
     dom.checkedOnly.addEventListener('change', () => { state.checkedOnly = dom.checkedOnly.checked; applyFilters(); });
+    dom.epgOnly.addEventListener('change', () => { state.epgOnly = dom.epgOnly.checked; applyFilters(); });
     dom.proxyBase.value = IPTVPlayer.getProxyBase();
     dom.proxySave.addEventListener('click', () => {
       const v = dom.proxyBase.value.trim();
@@ -373,6 +466,7 @@
     bindEvents();
     initObserver();
     startClock();
+    setInterval(refreshEpgCards, 30000);
     loadData();
     // テスト・デバッグ用フック
     window.__IPTV__ = { state };

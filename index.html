@@ -50,6 +50,10 @@
         <input id="checked-only" type="checkbox">
         再生確認済みのみ
       </label>
+      <label class="check" id="epg-only-label" hidden>
+        <input id="epg-only" type="checkbox">
+        番組表ありのみ
+      </label>
       <button id="shuffle-btn" type="button" class="action-btn">ランダム選局</button>
     </div>
   </header>
@@ -97,6 +101,7 @@
     </div>
     <p id="player-status" class="player-status" role="status"></p>
     <div id="player-variants" class="player-variants"></div>
+    <div id="player-epg" class="player-epg" hidden></div>
     <div id="player-error" class="player-error" hidden>
       <p>この配信はブラウザから再生できませんでした。よくある原因:</p>
       <ul>
@@ -132,6 +137,7 @@
   </footer>
 
   <script src="assets/js/data.js"></script>
+  <script src="assets/js/epg.js"></script>
   <script src="assets/js/player.js"></script>
   <script src="assets/js/app.js"></script>
 </body>

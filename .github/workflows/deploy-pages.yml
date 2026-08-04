@@ -24,6 +24,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 番組表データは履歴肥大を避けるため epg-data ブランチにある
+      # (grab-epg.yml 参照)。サイトに同梱するためデプロイ直前に取り出す
+      - name: Include latest EPG data
+        run: |
+          if git fetch --depth 1 origin epg-data; then
+            git checkout FETCH_HEAD -- data/epg
+          else
+            echo "no epg-data branch yet"
+          fi
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:

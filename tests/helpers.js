@@ -32,6 +32,11 @@ async function routeApi(page) {
     route.fulfill({ status: 404, contentType: 'application/json', body: 'not found' })
   );
 
+  // 番組表(EPG)データも既定では「無し」(404)。個別テストで上書きする。
+  await page.route('**/data/epg/*.json', (route) =>
+    route.fulfill({ status: 404, contentType: 'application/json', body: 'not found' })
+  );
+
   await page.route('https://iptv-org.github.io/api/*.json', (route) => {
     const name = route.request().url().split('/').pop();
     const file = path.join(FIXTURES, 'api', name);

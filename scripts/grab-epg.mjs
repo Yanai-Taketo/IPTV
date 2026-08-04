@@ -1,0 +1,181 @@
+#!/usr/bin/env node
+'use strict';
+
+/**
+ * EPG(電子番組表)データパイプラインの CLI。iptv-org は番組データ自体を
+ * ホストしていないため、公式グラバー iptv-org/epg を CI で実行して
+ * 静的 JSON(data/epg/)を自前生成する。2 段階で使う:
+ *
+ *   1) node scripts/grab-epg.mjs prepare --out data/epg/channels.xml
+ *      iptv-org API の guides.json / feeds.json / streams.json と
+ *      ローカルの data/playability.json から「再生確認済み × ガイドあり」の
+ *      チャンネルを選定し、グラバー用 channels.xml を生成する。
+ *
+ *   2) (iptv-org/epg 側で)npm run grab --- --channels=... --json=guide.json
+ *
+ *   3) node scripts/grab-epg.mjs convert --in guide.json --outdir data/epg
+ *      グラブ結果をフロントエンド配信用のコンパクト形式へ変換する。
+ *      (schedule.json + details-<n>.json。フォーマットは epg-lib.mjs 参照)
+ *
+ * 番組が 1 件も得られなかった場合 convert は失敗する(空データで
+ * 既存の配信データを上書きしないための安全弁)。
+ */
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { DEFAULTS, selectGuideRows, buildChannelsXml, convertGuide } from './epg-lib.mjs';
+
+const API_BASE = 'https://iptv-org.github.io/api';
+
+export function parseArgs(argv) {
+  const [, , command, ...rest] = argv;
+  const args = {
+    command,
+    out: 'data/epg/channels.xml',
+    in: 'guide.json',
+    outdir: 'data/epg',
+    playability: 'data/playability.json',
+    maxSites: DEFAULTS.maxSites,
+    maxChannels: DEFAULTS.maxChannels,
+    shards: DEFAULTS.shardCount,
+    days: null,
+  };
+  let i = 0;
+  // 値を取るフラグの値。欠落やフラグの誤消費を黙って通さない
+  const value = (flag) => {
+    const v = rest[++i];
+    if (v === undefined || v.startsWith('--')) throw new Error(`${flag} には値が必要です`);
+    return v;
+  };
+  const positiveInt = (flag) => {
+    const v = value(flag);
+    const n = Number.parseInt(v, 10);
+    if (!Number.isInteger(n) || n <= 0 || String(n) !== v.trim()) {
+      throw new Error(`${flag} には正の整数を指定してください: ${v}`);
+    }
+    return n;
+  };
+  for (; i < rest.length; i++) {
+    if (rest[i] === '--out') args.out = value('--out');
+    else if (rest[i] === '--in') args.in = value('--in');
+    else if (rest[i] === '--outdir') args.outdir = value('--outdir');
+    else if (rest[i] === '--playability') args.playability = value('--playability');
+    else if (rest[i] === '--max-sites') args.maxSites = positiveInt('--max-sites');
+    else if (rest[i] === '--max-channels') args.maxChannels = positiveInt('--max-channels');
+    else if (rest[i] === '--shards') args.shards = positiveInt('--shards');
+    else if (rest[i] === '--days') args.days = positiveInt('--days');
+    else throw new Error(`unknown argument: ${rest[i]}`);
+  }
+  return args;
+}
+
+async function fetchJson(name) {
+  const res = await fetch(`${API_BASE}/${name}.json`);
+  if (!res.ok) throw new Error(`${name}.json: HTTP ${res.status}`);
+  return res.json();
+}
+
+/** 再生確認済み(status=1 のストリームを持つ)チャンネル id の集合を作る */
+function wantedChannels(streams, playability) {
+  const status = playability && playability.status ? playability.status : null;
+  const wanted = new Set();
+  for (const s of streams) {
+    if (!s.channel || !s.url) continue;
+    if (status) {
+      if (status[s.url] === 1) wanted.add(s.channel);
+    } else {
+      wanted.add(s.channel); // インデックスが無い環境ではストリームを持つ全チャンネル
+    }
+  }
+  return { wanted, verified: Boolean(status) };
+}
+
+async function prepare(args) {
+  console.log('fetching iptv-org api (guides/feeds/streams)...');
+  const [guides, feeds, streams] = await Promise.all([
+    fetchJson('guides'),
+    fetchJson('feeds'),
+    fetchJson('streams'),
+  ]);
+
+  let playability = null;
+  try {
+    playability = JSON.parse(fs.readFileSync(args.playability, 'utf8'));
+  } catch {
+    console.log(`note: ${args.playability} が読めないため全チャンネルを候補にします`);
+  }
+
+  const { wanted, verified } = wantedChannels(streams, playability);
+  console.log(`candidate channels: ${wanted.size} (${verified ? '再生確認済みのみ' : '未確認を含む'})`);
+
+  const { rows, stats } = selectGuideRows(guides, feeds, wanted, {
+    maxSites: args.maxSites,
+    maxChannels: args.maxChannels,
+  });
+  if (!rows.length) {
+    throw new Error('グラブ対象が 0 件です(選定条件が厳しすぎるか、入力データが不正です)');
+  }
+  console.log(
+    `selected ${stats.selected} channels over ${stats.sites} sites ` +
+      `(guide coverage ${stats.withGuide}/${stats.wanted}, ` +
+      `site-capped ${stats.droppedBySiteCap}, channel-capped ${stats.droppedByChannelCap})`
+  );
+
+  const perSite = new Map();
+  for (const r of rows) perSite.set(r.site, (perSite.get(r.site) || 0) + 1);
+  for (const [site, n] of [...perSite.entries()].sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${site}: ${n}`);
+  }
+
+  fs.mkdirSync(path.dirname(args.out), { recursive: true });
+  fs.writeFileSync(args.out, buildChannelsXml(rows));
+  console.log(`wrote ${args.out} (${rows.length} channels)`);
+}
+
+async function convert(args) {
+  const grabJson = JSON.parse(fs.readFileSync(args.in, 'utf8'));
+  const { schedule, shards, stats } = convertGuide(grabJson, {
+    shardCount: args.shards,
+    days: args.days,
+  });
+
+  if (!stats.programs) {
+    throw new Error('グラブ結果に番組が 1 件もありません(既存データを保護するため中断)');
+  }
+
+  fs.mkdirSync(args.outdir, { recursive: true });
+  const schedulePath = path.join(args.outdir, 'schedule.json');
+  fs.writeFileSync(schedulePath, JSON.stringify(schedule));
+  shards.forEach((shard, i) => {
+    fs.writeFileSync(path.join(args.outdir, `details-${i}.json`), JSON.stringify(shard));
+  });
+  // シャード数を減らした場合に古いシャードが残らないよう掃除する
+  for (const file of fs.readdirSync(args.outdir)) {
+    const m = file.match(/^details-(\d+)\.json$/);
+    if (m && Number(m[1]) >= shards.length) fs.unlinkSync(path.join(args.outdir, file));
+  }
+
+  const kb = (p) => (fs.statSync(p).size / 1024).toFixed(0);
+  console.log(
+    `wrote ${schedulePath} (${kb(schedulePath)} KB): ` +
+      `${stats.channels} channels, ${stats.programs} programs, ${stats.sites} sites, ` +
+      `${shards.length} detail shards, skipped ${stats.skippedPrograms} bad / ` +
+      `${stats.prunedPrograms} ended programs`
+  );
+}
+
+async function run() {
+  const args = parseArgs(process.argv);
+  if (args.command === 'prepare') return prepare(args);
+  if (args.command === 'convert') return convert(args);
+  throw new Error('usage: grab-epg.mjs <prepare|convert> [options]');
+}
+
+// テストから parseArgs を import できるよう、直接実行時のみ起動する
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  run().catch((err) => {
+    console.error(err.message || err);
+    process.exit(1);
+  });
+}

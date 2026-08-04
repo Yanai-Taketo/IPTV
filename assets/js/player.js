@@ -114,6 +114,7 @@ const IPTVPlayer = (() => {
       meta: document.getElementById('player-meta'),
       status: document.getElementById('player-status'),
       variants: document.getElementById('player-variants'),
+      epg: document.getElementById('player-epg'),
       error: document.getElementById('player-error'),
       errorActions: document.getElementById('player-error-actions'),
       unmute: document.getElementById('player-unmute'),
@@ -201,6 +202,8 @@ const IPTVPlayer = (() => {
     dom.video.muted = false;
 
     renderVariants();
+    renderEpg();
+    startEpgTimer();
     if (!dom.modal.open) dom.modal.showModal();
     play(0, true);
   }
@@ -212,8 +215,13 @@ const IPTVPlayer = (() => {
 
   function handleDialogClose() {
     teardown();
+    stopEpgTimer();
     entry = null;
     currentIndex = -1;
+    if (dom.epg) {
+      dom.epg.hidden = true;
+      dom.epg.textContent = '';
+    }
     if (m3uUrl) {
       URL.revokeObjectURL(m3uUrl);
       m3uUrl = null;
@@ -268,6 +276,124 @@ const IPTVPlayer = (() => {
         btn.removeAttribute('aria-disabled');
         btn.title = btn.dataset.baseTitle || '';
       }
+    });
+  }
+
+  // ---- 番組表(EPG)パネル ---------------------------------------------------
+
+  const EPG_UPCOMING_LIMIT = 6;
+  const EPG_REFRESH_MS = 30000;
+  let epgTimer = 0;
+
+  function startEpgTimer() {
+    stopEpgTimer();
+    epgTimer = setInterval(renderEpg, EPG_REFRESH_MS);
+  }
+
+  function stopEpgTimer() {
+    if (epgTimer) {
+      clearInterval(epgTimer);
+      epgTimer = 0;
+    }
+  }
+
+  function epgAvailable() {
+    // IPTVEpg は const 宣言のため window には生えない — typeof で存在確認する
+    return Boolean(
+      typeof IPTVEpg !== 'undefined' && IPTVEpg.isLoaded() && entry && IPTVEpg.get(entry.key)
+    );
+  }
+
+  function renderEpg() {
+    if (!dom.epg) return;
+    if (!epgAvailable()) {
+      dom.epg.hidden = true;
+      dom.epg.textContent = '';
+      return;
+    }
+    const ch = IPTVEpg.get(entry.key);
+    const nowSec = Math.floor(Date.now() / 1000);
+    const { current } = IPTVEpg.nowNext(ch.p, nowSec);
+    const list = IPTVEpg.upcoming(ch.p, nowSec, EPG_UPCOMING_LIMIT);
+
+    dom.epg.hidden = false;
+    dom.epg.textContent = '';
+
+    const label = document.createElement('span');
+    label.className = 'player-epg-label';
+    label.textContent = 'Programme ・ 番組表';
+    dom.epg.appendChild(label);
+
+    if (!list.length) {
+      const note = document.createElement('p');
+      note.className = 'player-epg-note';
+      note.textContent = '現在時刻の番組情報はありません(番組表の提供期間外です)';
+      dom.epg.appendChild(note);
+      return;
+    }
+
+    if (current) {
+      const now = document.createElement('div');
+      now.className = 'player-epg-now';
+
+      const title = document.createElement('p');
+      title.className = 'player-epg-nowtitle';
+      title.textContent = `▶ ${current.title}`;
+      now.appendChild(title);
+
+      const time = document.createElement('p');
+      time.className = 'player-epg-nowtime';
+      time.textContent = IPTVEpg.fmtRange(current.start, current.dur);
+      now.appendChild(time);
+
+      const bar = document.createElement('div');
+      bar.className = 'epg-bar';
+      bar.setAttribute('aria-hidden', 'true');
+      const fill = document.createElement('i');
+      fill.style.width = `${IPTVEpg.progressPercent(current.start, current.dur, nowSec)}%`;
+      bar.appendChild(fill);
+      now.appendChild(bar);
+
+      const desc = document.createElement('p');
+      desc.className = 'player-epg-desc';
+      desc.id = 'player-epg-desc';
+      desc.hidden = true;
+      now.appendChild(desc);
+
+      dom.epg.appendChild(now);
+      fillEpgDescription(desc, current);
+    }
+
+    // 「この後の番組」は放送中を除いて最大 5 件
+    const rest = list.filter((p) => !p.isCurrent).slice(0, 5);
+    if (rest.length) {
+      const ul = document.createElement('ul');
+      ul.className = 'player-epg-list';
+      for (const p of rest) {
+        const li = document.createElement('li');
+        const time = document.createElement('time');
+        time.textContent = IPTVEpg.fmtTime(p.start);
+        li.appendChild(time);
+        li.appendChild(document.createTextNode(p.title));
+        ul.appendChild(li);
+      }
+      dom.epg.appendChild(ul);
+    }
+  }
+
+  // 説明文は詳細シャードから遅延取得する(失敗しても番組表自体は出したまま)
+  function fillEpgDescription(descEl, current) {
+    const forEntry = entry;
+    IPTVEpg.details(forEntry.key).then((det) => {
+      if (entry !== forEntry || !det || !descEl.isConnected) return;
+      const row = det.find((r) => r[0] === current.start && r[2] === current.title);
+      if (!row) return;
+      const [, , , sub, desc, category, episode] = row;
+      const head = [sub, episode, category].filter(Boolean).join(' ・ ');
+      const text = [head, desc].filter(Boolean).join(' — ');
+      if (!text) return;
+      descEl.textContent = text;
+      descEl.hidden = false;
     });
   }
 

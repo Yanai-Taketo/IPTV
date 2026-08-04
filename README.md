@@ -26,6 +26,7 @@
 
 - **全世界のチャンネル一覧** — [iptv-org API](https://github.com/iptv-org/api) からチャンネル・ストリーム・ロゴ・国・カテゴリ・言語データを取得して結合(約 1 万 2 千エントリ)
 - **検索・絞り込み** — チャンネル名(別名・ネットワーク名を含む)のテキスト検索、国・カテゴリ・言語・HTTPS 配信のみでの絞り込み、名前順 / 国順ソート
+- **番組表(EPG)** — 公式グラバー [iptv-org/epg](https://github.com/iptv-org/epg) を CI で毎日実行し、再生確認済みチャンネル約 1,400 局の「現在の番組 + 進捗バー」を一覧に、番組詳細と「この後の番組」をプレイヤーに表示。「番組表ありのみ」フィルタ付き
 - **ストリーミング再生** — [hls.js](https://github.com/video-dev/hls.js) による HLS 再生(Safari はネイティブ HLS にフォールバック)。DASH (.mpd) は dash.js を遅延読み込み、.mp4 / .webm はプログレッシブ再生
 - **自動フォールバック** — 複数ソースを持つチャンネルは、失敗時に次のソースを自動で試行
 - **エラー時の代替手段** — 全ソース失敗時はストリーム URL のコピー / .m3u ダウンロード(VLC などで再生)/ 公式サイトへのリンクを提示
@@ -67,7 +68,8 @@ npx http-server -p 8080 .
 |---|---|
 | `index.html` | ページ本体(hls.js は SRI 付き CDN 読み込み) |
 | `assets/js/data.js` | iptv-org API の取得と結合(streams → channels / feeds / logos / countries / categories / languages) |
-| `assets/js/player.js` | プレイヤーモーダル(hls.js / ネイティブ HLS / dash.js / プログレッシブ、自動フォールバック) |
+| `assets/js/epg.js` | 番組表データ(`data/epg/`)の読み込み・現在/次番組の算出・詳細シャードの遅延取得 |
+| `assets/js/player.js` | プレイヤーモーダル(hls.js / ネイティブ HLS / dash.js / プログレッシブ、自動フォールバック、番組表パネル) |
 | `assets/js/app.js` | UI 状態管理・検索・絞り込み・遅延描画 |
 | `assets/css/style.css` | エディトリアル UI(番組表グリッド・プレイヤー管制室スタイル) |
 | `assets/fonts/` | 同梱 Web フォント(Archivo 可変・IBM Plex Mono、latin サブセット、OFL) |
@@ -92,6 +94,25 @@ npx http-server -p 8080 .
 
 また、Safari/iOS ではネイティブ HLS を優先し(CORS 制約を受けないため再生できる配信が増える)、
 フッターの「詳細設定」から**自分専用の**ストリームプロキシ URL を任意で設定できます(既定 OFF)。
+
+## 番組表(EPG)
+
+iptv-org は番組データそのものをホストしていないため、公式グラバー
+[iptv-org/epg](https://github.com/iptv-org/epg) を CI で毎日実行して静的 JSON を自前生成しています
+(設計の詳細は [docs/epg-design.md](docs/epg-design.md) を参照)。
+
+- `scripts/grab-epg.mjs` / `scripts/epg-lib.mjs` — グラブ対象の選定
+  (再生確認済み × ガイドあり、既定 40 サイト・1,500 チャンネル上限)と、
+  グラブ結果のコンパクト形式への変換
+- `.github/workflows/grab-epg.yml` — 毎日自動更新(デフォルトブランチ上で有効。
+  手動実行: Actions → Grab EPG data → Run workflow。取得日数・同時接続数を指定可能)
+- 生成物は `data/epg/schedule.json`(一覧用・[開始秒, 長さ秒, タイトル])と
+  `data/epg/details-<n>.json`(説明文入り。プレイヤーを開いたときのみ遅延取得)の 2 層構成
+- データは履歴を持たない **`epg-data` ブランチ**に force-push され(main の履歴を
+  肥大させないため)、各デプロイ時にサイトへ同梱されます
+- アプリは同データがあれば「現在の番組」表示・番組表パネル・「番組表ありのみ」フィルタを
+  有効化します(無くても従来どおり動作)。ローカルで試す場合:
+  `git fetch --depth 1 origin epg-data && git checkout FETCH_HEAD -- data/epg`
 
 ## ブラウザ再生の制約(既知の制限)
 
@@ -124,6 +145,10 @@ npm run test:live # 実 API へのスモークテスト(到達不可なら自動
 - `tests/app.spec.js` — 一覧・検索・絞り込み・ソート・NSFW 除外・ディープリンク
 - `tests/player.spec.js` — HLS パイプライン(マニフェスト→セグメント取得)、
   WebM 実再生、自動フォールバック、エラーパネル、URL 分類、DASH フォールバック
+- `tests/epg.spec.js` — 番組表(擬似クロックで時刻固定): カードの現在番組・境界越え更新・
+  フィルタ・プレイヤーパネル・詳細シャード欠落時のフォールバック・EPG 無し環境の非表示
+- `tests/epg-transform.spec.js` — EPG パイプライン純粋ロジック(選定・変換・XML 生成)の
+  ユニットテスト
 - `tests/resilience.spec.js` — 任意エンドポイント欠落時の縮退動作、必須エンドポイント
   失敗 → 再試行の復帰
 - `tests/realdata.spec.js` — 実データスナップショット(4 万チャンネル)での

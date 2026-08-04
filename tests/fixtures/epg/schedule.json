@@ -1,0 +1,35 @@
+{
+  "generated_at": "2026-08-04T10:00:00Z",
+  "days": 2,
+  "shard_count": 4,
+  "counts": { "channels": 3, "programs": 6, "sites": 3 },
+  "channels": {
+    "NHKWorldJapan.jp": {
+      "site": "i.mjh.nz",
+      "feed": "SD",
+      "shard": 2,
+      "p": [
+        [1785837600, 3600, "Morning Brief"],
+        [1785843000, 3600, "World News Today"],
+        [1785846600, 1800, "Asia Insight"],
+        [1785848400, 5400, "Documentary Hour"]
+      ]
+    },
+    "TestMulti.jp": {
+      "site": "pluto.tv",
+      "feed": "SD",
+      "shard": 1,
+      "p": [
+        [1785848400, 3600, "Evening Show"]
+      ]
+    },
+    "HttpOnly.ru": {
+      "site": "tv.mail.ru",
+      "feed": "SD",
+      "shard": 0,
+      "p": [
+        [1785830400, 3600, "Old Show"]
+      ]
+    }
+  }
+}

@@ -68,7 +68,9 @@ test.describe('プレイヤー', () => {
     expect(page.url()).toContain('#play=');
     await page.locator('#player-close').click();
     await expect(page.locator('#player-modal')).not.toHaveAttribute('open', '');
-    expect(page.url()).not.toContain('#play=');
+    // dialog の close イベントは仕様上タスクキュー経由(非同期)のため、
+    // ハッシュ除去はクリック直後ではなくポーリングで検証する
+    await expect.poll(() => page.url()).not.toContain('#play=');
   });
 
   test('URL 分類ロジック(混在コンテンツ / DASH / 非対応プロトコル)', async ({ page }) => {

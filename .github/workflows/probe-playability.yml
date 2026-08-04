@@ -50,7 +50,20 @@ jobs:
             echo "no changes"
           else
             git commit -m "Update stream playability index"
+            # プローブ実行中(最長 30 分)に main が進んでいても失敗しないよう
+            # 取り込みつつプッシュする
+            git pull --rebase origin "$GITHUB_REF_NAME"
             git push
+          fi
+
+      # 番組表データは履歴肥大を避けるため epg-data ブランチにある
+      # (grab-epg.yml 参照)。サイトに同梱するためデプロイ直前に取り出す
+      - name: Include latest EPG data
+        run: |
+          if git fetch --depth 1 origin epg-data; then
+            git checkout FETCH_HEAD -- data/epg
+          else
+            echo "no epg-data branch yet"
           fi
 
       # GITHUB_TOKEN によるコミットは他のワークフローを起動しないため、
