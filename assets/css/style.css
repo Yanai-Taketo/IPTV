@@ -795,6 +795,19 @@ button { font-family: inherit; }
 
 .player-variants:empty { padding: 0 0 16px; }
 
+/* 公式サイトなど、再生の成否によらず常設する導線 */
+.player-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 18px 16px;
+}
+
+.player-links:empty { display: none; }
+
+/* 配信ソース一覧が出ている場合は、そのすぐ下に詰めて置く */
+.player-variants:not(:empty) + .player-links { padding-top: 2px; }
+
 .variants-label {
   font-family: var(--mono);
   font-size: 10px;
