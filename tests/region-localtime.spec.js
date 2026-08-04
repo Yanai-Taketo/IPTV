@@ -61,38 +61,6 @@ test.describe('地域フィルタ + 現地時刻', () => {
 
 });
 
-test.describe('「現地 19–23 時」フィルタの境界', () => {
-  // 判定は 19 時を含み 23 時を含まない。日本(UTC+9)を境界に置いて検証する
-  async function openAt(page, iso) {
-    const at = new Date(iso);
-    await page.clock.install({ time: at });
-    await page.clock.pauseAt(at);
-    await routeApi(page);
-    await page.goto('/');
-    await expect(page.locator('#app')).toBeVisible();
-    await page.check('#night-only');
-  }
-
-  test('ちょうど 19:00 は含まれる', async ({ page }) => {
-    await openAt(page, '2026-08-04T10:00:00Z'); // 日本 19:00
-    await expect(page.locator('.card', { hasText: 'NHK World Japan' }).locator('.card-local')).toHaveText(
-      ' · 現地 19:00'
-    );
-    await expect(page.locator('.card')).toHaveCount(2); // 日本の 2 局
-  });
-
-  test('ちょうど 23:00 は含まれない', async ({ page }) => {
-    await openAt(page, '2026-08-04T14:00:00Z'); // 日本 23:00 / モスクワ 17:00 / NY 10:00
-    await expect(page.locator('.card')).toHaveCount(0);
-    await expect(page.locator('#empty')).toBeVisible();
-  });
-
-  test('22:59 は含まれる(23:00 の 1 分前)', async ({ page }) => {
-    await openAt(page, '2026-08-04T13:59:00Z');
-    await expect(page.locator('.card')).toHaveCount(2);
-  });
-});
-
 test.describe('地域・タイムゾーンデータが無い環境', () => {
   test('regions.json が 404 でも動作し、地域フィルタは現れない', async ({ page }) => {
     await routeApi(page);

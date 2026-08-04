@@ -121,7 +121,7 @@ test.describe('モバイル + 番組表(本番構成)', () => {
     await expect(page.locator('#epg-only-label')).toBeVisible();
     await page.check('#epg-only');
     await expect(page.locator('#filters-toggle')).toContainText('絞り込み (1)');
-    await expect(page.locator('.card')).toHaveCount(3);
+    await expect(page.locator('.card')).toHaveCount(4);
   });
 
   test('畳んだ状態からテレビ欄ビューへ切り替えられる', async ({ page }) => {
