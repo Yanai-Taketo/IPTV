@@ -46,7 +46,16 @@ npx http-server -p 8080 .
 
 ### GitHub Pages で公開
 
-リポジトリの Settings → Pages でブランチを公開するだけです。ビルドは不要です。
+デプロイ用ワークフロー(`.github/workflows/deploy-pages.yml`)を同梱しています。
+初回のみ、リポジトリの **Settings → Pages → Build and deployment → Source** を
+**GitHub Actions** に設定してください(Pages の新規有効化は Actions のトークン権限では
+行えないため、この 1 クリックだけ手動が必要です)。以後はデフォルトブランチへの
+プッシュごとに自動デプロイされます。手動実行は Actions タブの
+「Deploy to GitHub Pages」→ Run workflow からも可能です。
+
+> **プライベートリポジトリの場合**: GitHub Pages は Free プランではパブリック
+> リポジトリのみ利用できます。プライベートのまま公開するには Pro 以上のプランが
+> 必要です(公開されたサイト自体は誰でも閲覧可能になります)。
 
 > **注意**: HTTPS ページとして公開すると、`http://` のストリーム(全体の約 2 割)は
 > ブラウザの混在コンテンツ制限により再生できません。アプリはこれを検出して
