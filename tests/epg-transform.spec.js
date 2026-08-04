@@ -228,6 +228,68 @@ test.describe('convertGuide', () => {
   });
 });
 
+// ---- decodeEntities ---------------------------------------------------------
+
+test.describe('decodeEntities', () => {
+  test('XML の 5 実体と番組表で現れる HTML 実体を復号する', () => {
+    expect(lib.decodeEntities('Half &amp; Half')).toBe('Half & Half');
+    expect(lib.decodeEntities('&lt;Live&gt; &quot;A&quot; &apos;B&apos;')).toBe('<Live> "A" \'B\'');
+    expect(lib.decodeEntities('Caf&eacute; &hellip;')).toBe('Café …');
+  });
+
+  test('数値参照(10 進・16 進)を復号する', () => {
+    expect(lib.decodeEntities('AT&#38;T')).toBe('AT&T');
+    expect(lib.decodeEntities('A&#x26;B &#128512;')).toBe('A&B 😀');
+  });
+
+  test('復号すると壊れる値・未知の実体は元のまま残す', () => {
+    // 表に無い実体 / ; 無し / 範囲外 / サロゲート単体
+    expect(lib.decodeEntities('&hearts; &amp &#0; &#1114112; &#xD800;'))
+      .toBe('&hearts; &amp &#0; &#1114112; &#xD800;');
+    expect(lib.decodeEntities('&amp;amp;')).toBe('&amp;'); // 二重符号化は 1 回だけ
+    expect(lib.decodeEntities('no entities here')).toBe('no entities here');
+    expect(lib.decodeEntities(null)).toBe(null); // 文字列以外はそのまま返す
+  });
+
+  test('タイトル・サブタイトル・説明文・カテゴリが復号されて配信データに入る', () => {
+    const { schedule, shards } = lib.convertGuide(
+      {
+        programs: [
+          makeProgram({
+            titles: [{ value: 'Half &amp; Half' }],
+            subTitles: [{ value: 'Rock &amp; Roll' }],
+            descriptions: [{ value: 'Caf&eacute; &amp; Bar' }],
+            categories: [{ value: 'Arts &amp; Culture' }],
+          }),
+        ],
+      },
+      { ...BASE, shardCount: 1 }
+    );
+    expect(schedule.channels['Chan.jp'].p[0][2]).toBe('Half & Half');
+    expect(shards[0]['Chan.jp'][0].slice(2, 6))
+      .toEqual(['Half & Half', 'Rock & Roll', 'Café & Bar', 'Arts & Culture']);
+  });
+
+  test('復号後に空白だけになる値はスキップ扱いになる', () => {
+    // `&nbsp;` は復号すると空白 → タイトル無しとして落とす(未復号だと通ってしまう)
+    const { schedule, stats } = lib.convertGuide(
+      { programs: [makeProgram({ titles: [{ value: '&nbsp;' }] })] },
+      { ...BASE, shardCount: 1 }
+    );
+    expect(Object.keys(schedule.channels)).toEqual([]);
+    expect(stats.skippedPrograms).toBe(1);
+  });
+
+  test('切り詰めは復号後の文字数で数える', () => {
+    const { schedule, shards } = lib.convertGuide(
+      { programs: [makeProgram({ descriptions: [{ value: '&amp;'.repeat(20) }] })] },
+      { ...BASE, shardCount: 1 }
+    );
+    // 復号前 100 文字 / 復号後 20 文字 — 上限 30 でも切り詰められない
+    expect(shards[schedule.channels['Chan.jp'].shard]['Chan.jp'][0][4]).toBe('&'.repeat(20));
+  });
+});
+
 // ---- selectGuideRows --------------------------------------------------------
 
 const FEEDS = [

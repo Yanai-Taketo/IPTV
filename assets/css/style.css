@@ -514,6 +514,9 @@ button { font-family: inherit; }
 
 .card-epg-title.card-epg-next { color: var(--ink-soft); }
 
+/* 番組タイトル検索で一致した番組(現在番組とは別に出す) */
+.card-epg-hit { color: var(--warn); }
+
 .card-epg-time {
   display: block;
   font-size: 9.5px;
@@ -648,6 +651,10 @@ button { font-family: inherit; }
 
 .tl-prog:hover { background: #ffffff; outline: 1px solid var(--ink); }
 .tl-prog.tl-current { background: #ffffff; border-left-color: var(--red); }
+/* 番組タイトル検索の一致。放送中(赤い左罫)と重なっても両方見えるよう
+   背景・罫線ではなく輪郭で示す(時刻ラベルの 🔍 が色以外の手がかり) */
+.tl-prog.tl-match { outline: 2px solid var(--warn); outline-offset: -2px; }
+.tl-prog.tl-match .tl-prog-time { color: var(--warn); }
 
 .tl-prog-title {
   display: block;

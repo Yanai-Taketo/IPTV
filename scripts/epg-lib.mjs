@@ -219,10 +219,53 @@ export function shardIndex(channelId, shardCount) {
   return (hash >>> 0) % shardCount;
 }
 
+/**
+ * 番組名・説明文に残る HTML 実体参照(`Half &amp; Half` など)を復号する。
+ * グラバーのサイト別スクレイパは HTML 由来のテキストをそのまま返すため、
+ * XML パーサを通ったあとも実体参照が残ることがある(本番データ実測では
+ * `&amp;` が 902 件・`&nbsp;` が 1 件)。復号しないと表示が崩れ、
+ * 番組タイトル検索で「half & half」が一致しない。
+ *
+ * 表は XML の 5 実体 + 番組表で現実に現れる範囲に絞る。未知の実体は
+ * 元の文字列のまま残す(取りこぼしても壊さない方を選ぶ)。二重符号化
+ * (`&amp;amp;`)は 1 回だけ復号する — 繰り返すと本来 `&amp;` と書きたい
+ * タイトルを壊すため。
+ * クライアント側にも同じ復号が必要(assets/js/epg.js)。生成データが
+ * 入れ替わるのは次回グラブ後なので、既存データにも耐えるようにしてある。
+ */
+const NAMED_ENTITIES = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+  nbsp: ' ', ndash: '–', mdash: '—', hellip: '…',
+  lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”',
+  bull: '•', middot: '·', deg: '°', trade: '™',
+  copy: '©', reg: '®', laquo: '«', raquo: '»',
+  eacute: 'é', egrave: 'è', agrave: 'à', ccedil: 'ç',
+  uuml: 'ü', ouml: 'ö', auml: 'ä', ntilde: 'ñ', szlig: 'ß',
+};
+
+const ENTITY_RE = /&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g;
+
+export function decodeEntities(text) {
+  if (typeof text !== 'string' || text.indexOf('&') === -1) return text;
+  return text.replace(ENTITY_RE, (match, body) => {
+    if (body[0] === '#') {
+      const hex = body[1] === 'x' || body[1] === 'X';
+      const code = parseInt(hex ? body.slice(2) : body.slice(1), hex ? 16 : 10);
+      // 範囲外・サロゲート単体は復号すると壊れた文字になるので元のまま残す
+      if (!Number.isFinite(code) || code <= 0 || code > 0x10ffff) return match;
+      if (code >= 0xd800 && code <= 0xdfff) return match;
+      return String.fromCodePoint(code);
+    }
+    const named = NAMED_ENTITIES[body];
+    return named === undefined ? match : named;
+  });
+}
+
 function firstValue(list) {
   if (!Array.isArray(list) || !list.length) return '';
   const v = list[0] && list[0].value != null ? String(list[0].value) : '';
-  return v.trim();
+  // 復号してから trim する(`&nbsp;` だけの値を空文字に畳むため)
+  return decodeEntities(v).trim();
 }
 
 function truncate(text, limit) {
