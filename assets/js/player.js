@@ -4,7 +4,8 @@
  * プレイヤーモーダル。
  * hls.js (MSE) → Safari ネイティブ HLS の順でフォールバックし、
  * 失敗時はチャンネル内の別ストリームを自動で順に試す。
- * 全滅したらエラーパネル(URLコピー / .m3u ダウンロード / 公式サイト)を表示する。
+ * 全滅したらエラーパネル(URLコピー / .m3u ダウンロード)を表示する。
+ * 公式サイトへのリンクは再生の成否によらず常設(#player-links)。
  */
 const IPTVPlayer = (() => {
   const DASH_CDN = 'https://cdn.jsdelivr.net/npm/dashjs@5.2.0/dist/modern/umd/dash.all.min.js';
@@ -116,6 +117,7 @@ const IPTVPlayer = (() => {
       meta: document.getElementById('player-meta'),
       status: document.getElementById('player-status'),
       variants: document.getElementById('player-variants'),
+      links: document.getElementById('player-links'),
       epg: document.getElementById('player-epg'),
       error: document.getElementById('player-error'),
       errorActions: document.getElementById('player-error-actions'),
@@ -202,6 +204,7 @@ const IPTVPlayer = (() => {
     dom.video.muted = false;
 
     renderVariants();
+    renderLinks();
     renderEpg();
     startEpgTimer();
     if (!dom.modal.open) dom.modal.showModal();
@@ -225,6 +228,7 @@ const IPTVPlayer = (() => {
     stopEpgTimer();
     entry = null;
     currentIndex = -1;
+    dom.links.textContent = '';
     if (dom.epg) {
       dom.epg.hidden = true;
       dom.epg.textContent = '';
@@ -265,6 +269,40 @@ const IPTVPlayer = (() => {
       dom.variants.appendChild(btn);
     });
     updateVariantStates();
+  }
+
+  // ---- 公式サイトへの導線 ---------------------------------------------------
+
+  /** データ由来の URL をそのまま href にしないための検証(絶対 http(s) のみ許可) */
+  function safeSiteUrl(url) {
+    if (!url) return null;
+    let u;
+    try {
+      u = new URL(url); // 基底を渡さないため、相対 URL はここで弾かれる
+    } catch (e) {
+      return null;
+    }
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+  }
+
+  /**
+   * 公式サイトのリンク。iptv-org の channels.json は約 7 割のチャンネルに
+   * website を持つため、再生の成否によらず常に出す(配信 URL 未登録の
+   * チャンネルでも、公式サイトでなら視聴できることがある)。
+   */
+  function renderLinks() {
+    dom.links.textContent = '';
+    const site = entry ? safeSiteUrl(entry.website) : null;
+    if (!site) return;
+    const a = document.createElement('a');
+    a.id = 'player-site';
+    a.className = 'action-btn';
+    a.textContent = '公式サイトを開く';
+    a.title = `${entry.name} の公式サイト(別タブで開きます)`;
+    a.href = site;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    dom.links.appendChild(a);
   }
 
   function updateVariantStates() {
@@ -690,16 +728,7 @@ const IPTVPlayer = (() => {
     m3uBtn.href = m3uUrl;
     m3uBtn.download = `${entry.name.replace(/[\\/:*?"<>|]/g, '_')}.m3u`;
     dom.errorActions.appendChild(m3uBtn);
-
-    if (entry.website) {
-      const site = document.createElement('a');
-      site.className = 'action-btn';
-      site.textContent = '公式サイトを開く';
-      site.href = entry.website;
-      site.target = '_blank';
-      site.rel = 'noopener noreferrer';
-      dom.errorActions.appendChild(site);
-    }
+    // 公式サイトへのリンクは #player-links に常設したため、ここには出さない
   }
 
   function copyText(text) {
