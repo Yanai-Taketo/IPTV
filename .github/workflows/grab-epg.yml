@@ -54,7 +54,7 @@ jobs:
           node-version: 22
 
       - name: Select channels (playable x guided)
-        run: node scripts/grab-epg.mjs prepare --out data/epg/channels.xml
+        run: node scripts/grab-epg.mjs prepare --out data/epg/channels.xml --split-dir "$RUNNER_TEMP/epg-channels"
 
       - name: Clone iptv-org/epg grabber
         run: git clone --depth 1 https://github.com/iptv-org/epg.git "$RUNNER_TEMP/epg"
@@ -63,18 +63,39 @@ jobs:
         working-directory: ${{ runner.temp }}/epg
         run: npm ci --no-audit --no-fund
 
-      - name: Grab programme data
+      # サイトごとに別プロセスで実行する。全サイトを 1 プロセスでグラブすると、
+      # 全チャンネル分の XMLTV を一括返却するサイトが同時に重なった時点で
+      # Node のヒープ(既定 4GB)が枯渇する(実環境で確認済み)。分割により
+      # メモリはサイト 1 つ分に抑えられ、失敗・タイムアウトもサイト単位で隔離される
+      - name: Grab programme data (per site)
         working-directory: ${{ runner.temp }}/epg
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
         run: |
-          npm run grab --- \
-            --channels="$GITHUB_WORKSPACE/data/epg/channels.xml" \
-            --output="$RUNNER_TEMP/guide.xml" \
-            --json="$RUNNER_TEMP/guide.json" \
-            --days="$EPG_DAYS" \
-            --maxConnections="$EPG_MAX_CONNECTIONS"
+          set -uo pipefail
+          mkdir -p "$RUNNER_TEMP/guides"
+          ok=0; failed=0
+          for f in "$RUNNER_TEMP/epg-channels"/*.channels.xml; do
+            site="$(basename "$f" .channels.xml)"
+            echo "::group::grab $site"
+            if timeout -k 30 900 npm run grab --- \
+                 --channels="$f" \
+                 --output="$RUNNER_TEMP/guides/$site.xml" \
+                 --json="$RUNNER_TEMP/guides/$site.json" \
+                 --days="$EPG_DAYS" \
+                 --maxConnections="$EPG_MAX_CONNECTIONS"; then
+              ok=$((ok+1))
+            else
+              echo "::warning::grab failed for $site (exit $?)"
+              failed=$((failed+1))
+            fi
+            echo "::endgroup::"
+          done
+          echo "sites ok=$ok failed=$failed"
+          test "$ok" -gt 0
 
       - name: Convert to compact schedule + detail shards
-        run: node scripts/grab-epg.mjs convert --in "$RUNNER_TEMP/guide.json" --outdir data/epg --days "$EPG_DAYS"
+        run: node scripts/grab-epg.mjs convert --indir "$RUNNER_TEMP/guides" --outdir data/epg --days "$EPG_DAYS"
 
       # main には置かず、履歴を持たない epg-data ブランチへ毎回作り直して
       # force-push する(毎日 15MB 級のデータをコミットすると履歴が年 1GB 超

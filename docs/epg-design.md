@@ -76,13 +76,21 @@ data/epg/channels.xml       … グラバーに渡した選定結果(透明性�
 
 ```
 毎日 05:07 UTC(再生可能性プローブの後)
-  1. prepare  … API + playability.json から channels.xml を生成
+  1. prepare  … API + playability.json から channels.xml(全体 + サイト別)を生成
   2. iptv-org/epg を shallow clone + npm ci
-  3. npm run grab --- --json --days=2 --maxConnections=10
-  4. convert  … schedule.json + details-*.json へ変換
+  3. サイトごとに別プロセスで npm run grab --- --json --days=2 --maxConnections=10
+     (サイト単位で 15 分タイムアウト。失敗したサイトはスキップして続行)
+  4. convert  … 全サイトの結果をマージして schedule.json + details-*.json へ変換
      (番組 0 件なら失敗させ、既存データを空で上書きしない)
   5. data/epg/ を履歴を持たない epg-data ブランチへ force-push → Pages デプロイ
 ```
+
+**サイト単位の分割実行にした理由(実環境で確認した障害)**: 全 40 サイト・約 2,800
+グラブを単一プロセスで実行したところ、全チャンネル分の XMLTV を一括返却するサイト
+(epg.iptvx.one 等)の応答が同時に重なった時点で Node のヒープ(既定 4GB)が枯渇し
+OOM でクラッシュした。iptv-org 本家がサイト単位のジョブ分割で運用しているのと同じ
+構成に合わせ、メモリをサイト 1 つ分に抑えつつ、サイト側の障害・タイムアウトの影響を
+そのサイトだけに隔離している(1 サイトでも成功すれば配信データは更新される)。
 
 **main にはコミットしない。** 日次 15MB 級のデータを main に積むと履歴が年 1GB 超
 肥大するため、`epg-data` ブランチを毎回作り直して force-push する(常に 1 コミット)。

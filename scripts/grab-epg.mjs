@@ -6,16 +6,22 @@
  * ホストしていないため、公式グラバー iptv-org/epg を CI で実行して
  * 静的 JSON(data/epg/)を自前生成する。2 段階で使う:
  *
- *   1) node scripts/grab-epg.mjs prepare --out data/epg/channels.xml
+ *   1) node scripts/grab-epg.mjs prepare --out data/epg/channels.xml --split-dir <dir>
  *      iptv-org API の guides.json / feeds.json / streams.json と
  *      ローカルの data/playability.json から「再生確認済み × ガイドあり」の
  *      チャンネルを選定し、グラバー用 channels.xml を生成する。
+ *      --split-dir を指定するとサイトごとの <site>.channels.xml も出力する
+ *      (全サイトを単一プロセスでグラブすると、全チャンネル分の XMLTV を
+ *      一括返却するサイトが重なった時点でヒープが枯渇するため、
+ *      CI ではサイト単位でグラバーを起動する)。
  *
- *   2) (iptv-org/epg 側で)npm run grab --- --channels=... --json=guide.json
+ *   2) (iptv-org/epg 側で)サイトごとに
+ *      npm run grab --- --channels=<site>.channels.xml --json=<site>.json
  *
- *   3) node scripts/grab-epg.mjs convert --in guide.json --outdir data/epg
- *      グラブ結果をフロントエンド配信用のコンパクト形式へ変換する。
- *      (schedule.json + details-<n>.json。フォーマットは epg-lib.mjs 参照)
+ *   3) node scripts/grab-epg.mjs convert --indir <dir> --outdir data/epg
+ *      全サイトのグラブ結果をマージし、フロントエンド配信用のコンパクト形式へ
+ *      変換する(schedule.json + details-<n>.json。フォーマットは epg-lib.mjs 参照)。
+ *      単一ファイルの場合は --in <file> も使える。
  *
  * 番組が 1 件も得られなかった場合 convert は失敗する(空データで
  * 既存の配信データを上書きしないための安全弁)。
@@ -33,7 +39,9 @@ export function parseArgs(argv) {
   const args = {
     command,
     out: 'data/epg/channels.xml',
+    splitDir: null,
     in: 'guide.json',
+    indir: null,
     outdir: 'data/epg',
     playability: 'data/playability.json',
     maxSites: DEFAULTS.maxSites,
@@ -58,7 +66,9 @@ export function parseArgs(argv) {
   };
   for (; i < rest.length; i++) {
     if (rest[i] === '--out') args.out = value('--out');
+    else if (rest[i] === '--split-dir') args.splitDir = value('--split-dir');
     else if (rest[i] === '--in') args.in = value('--in');
+    else if (rest[i] === '--indir') args.indir = value('--indir');
     else if (rest[i] === '--outdir') args.outdir = value('--outdir');
     else if (rest[i] === '--playability') args.playability = value('--playability');
     else if (rest[i] === '--max-sites') args.maxSites = positiveInt('--max-sites');
@@ -131,10 +141,43 @@ async function prepare(args) {
   fs.mkdirSync(path.dirname(args.out), { recursive: true });
   fs.writeFileSync(args.out, buildChannelsXml(rows));
   console.log(`wrote ${args.out} (${rows.length} channels)`);
+
+  // CI 用: サイト単位でグラバーを起動できるよう、サイトごとにも分割して書き出す
+  if (args.splitDir) {
+    fs.mkdirSync(args.splitDir, { recursive: true });
+    const bySite = new Map();
+    for (const r of rows) {
+      let list = bySite.get(r.site);
+      if (!list) bySite.set(r.site, (list = []));
+      list.push(r);
+    }
+    for (const [site, siteRows] of bySite) {
+      const name = site.replace(/[^a-zA-Z0-9._-]/g, '_');
+      fs.writeFileSync(path.join(args.splitDir, `${name}.channels.xml`), buildChannelsXml(siteRows));
+    }
+    console.log(`wrote ${bySite.size} per-site channel lists to ${args.splitDir}`);
+  }
 }
 
-async function convert(args) {
-  const grabJson = JSON.parse(fs.readFileSync(args.in, 'utf8'));
+/** グラブ結果(単一ファイルまたは --indir 内の全 *.json)を読み込んでマージする */
+function loadGrabJson(args) {
+  if (!args.indir) return JSON.parse(fs.readFileSync(args.in, 'utf8'));
+  const files = fs
+    .readdirSync(args.indir)
+    .filter((f) => f.endsWith('.json'))
+    .sort();
+  if (!files.length) throw new Error(`${args.indir} に *.json がありません`);
+  const programs = [];
+  for (const f of files) {
+    const json = JSON.parse(fs.readFileSync(path.join(args.indir, f), 'utf8'));
+    if (Array.isArray(json.programs)) programs.push(...json.programs);
+  }
+  console.log(`merged ${files.length} site guides (${programs.length} programs)`);
+  return { programs };
+}
+
+export async function convert(args) {
+  const grabJson = loadGrabJson(args);
   const { schedule, shards, stats } = convertGuide(grabJson, {
     shardCount: args.shards,
     days: args.days,

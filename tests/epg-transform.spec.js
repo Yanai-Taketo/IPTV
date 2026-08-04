@@ -357,8 +357,63 @@ test.describe('parseArgs', () => {
     expect(() => cli.parseArgs(argv('convert', '--in', '--outdir', 'out'))).toThrow('--in には値が必要です');
   });
 
+  test('--split-dir と --indir を受け付ける', () => {
+    const args = cli.parseArgs(argv('prepare', '--split-dir', 'sites', '--out', 'c.xml'));
+    expect(args.splitDir).toBe('sites');
+    const args2 = cli.parseArgs(argv('convert', '--indir', 'guides'));
+    expect(args2.indir).toBe('guides');
+  });
+
   test('未知の引数はエラーになる', () => {
     expect(() => cli.parseArgs(argv('convert', '--nope'))).toThrow('unknown argument');
+  });
+});
+
+// ---- convert(--indir でのサイト別グラブ結果のマージ) -----------------------
+
+test.describe('convert --indir', () => {
+  test('複数サイトの guide JSON をマージして 1 つの schedule にする', async () => {
+    const fs = require('fs');
+    const os = require('os');
+    const pathm = require('path');
+    const tmp = fs.mkdtempSync(pathm.join(os.tmpdir(), 'epg-merge-'));
+    const indir = pathm.join(tmp, 'guides');
+    const outdir = pathm.join(tmp, 'out');
+    fs.mkdirSync(indir, { recursive: true });
+    // 番組が現在時刻近傍になるよう動的に生成(プルーニングを受けないため)
+    const start = Date.now();
+    const stop = start + 3600 * 1000;
+    const prog = (channel, site, title) => ({
+      site,
+      channel,
+      start,
+      stop,
+      titles: [{ value: title }],
+    });
+    fs.writeFileSync(
+      pathm.join(indir, 'site-a.json'),
+      JSON.stringify({ programs: [prog('AAA.jp@SD', 'site-a.com', 'Show A')] })
+    );
+    fs.writeFileSync(
+      pathm.join(indir, 'site-b.json'),
+      JSON.stringify({ programs: [prog('BBB.us@HD', 'site-b.com', 'Show B')] })
+    );
+    await cli.convert({ indir, outdir, in: null, shards: 2, days: 2 });
+    const schedule = JSON.parse(fs.readFileSync(pathm.join(outdir, 'schedule.json'), 'utf8'));
+    expect(Object.keys(schedule.channels).sort()).toEqual(['AAA.jp', 'BBB.us']);
+    expect(schedule.counts).toMatchObject({ channels: 2, programs: 2, sites: 2 });
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  test('JSON が 1 つも無いディレクトリはエラーになる', async () => {
+    const fs = require('fs');
+    const os = require('os');
+    const pathm = require('path');
+    const tmp = fs.mkdtempSync(pathm.join(os.tmpdir(), 'epg-empty-'));
+    await expect(cli.convert({ indir: tmp, outdir: tmp, in: null, shards: 2, days: 2 })).rejects.toThrow(
+      'json がありません'
+    );
+    fs.rmSync(tmp, { recursive: true, force: true });
   });
 });
 
