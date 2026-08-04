@@ -19,7 +19,6 @@
     region: '',
     category: '',
     language: '',
-    nightOnly: false, // 現地時刻 19–23 時のチャンネルのみ
     httpsOnly: PAGE_HTTPS, // HTTPS ページでは HTTP 配信は再生不可のため既定でオン
     checkedOnly: false,
     epgOnly: false,
@@ -61,8 +60,6 @@
       epgOnlyLabel: $('epg-only-label'),
       favOnly: $('fav-only'),
       favOnlyLabel: $('fav-only-label'),
-      nightOnly: $('night-only'),
-      nightOnlyLabel: $('night-only-label'),
       gridHeadNote: $('grid-head-note'),
       proxyBase: $('proxy-base'),
       proxySave: $('proxy-save'),
@@ -152,9 +149,6 @@
       for (const r of d.regionOptions) addOption(dom.region, r.code, `${r.name} (${r.count})`);
     }
 
-    // 現地時刻フィルタはタイムゾーンを持つチャンネルがある場合のみ表示
-    dom.nightOnlyLabel.hidden = !d.entries.some((e) => e.timezone);
-    dom.nightOnly.checked = state.nightOnly;
 
     addOption(dom.category, '', 'すべてのカテゴリ');
     for (const c of d.categoryOptions) addOption(dom.category, c.id, `${c.name} (${c.count})`);
@@ -223,14 +217,19 @@
     if (state.checkedOnly) n++;
     if (state.epgOnly) n++;
     if (state.favOnly) n++;
-    if (state.nightOnly) n++;
     return n;
   }
 
   function updateFiltersToggle() {
     const open = dom.toolbar.classList.contains('filters-open');
     const n = activeFilterCount();
-    dom.filtersToggle.textContent = `絞り込み${n ? ` (${n})` : ''} ${open ? '▴' : '▾'}`;
+    // 矢印は装飾なので aria-hidden に隔離し、SR には「絞り込み (n)」だけを読ませる
+    // (開閉状態は aria-expanded で伝わる)
+    dom.filtersToggle.textContent = `絞り込み${n ? ` (${n})` : ''}`;
+    const arrow = document.createElement('span');
+    arrow.setAttribute('aria-hidden', 'true');
+    arrow.textContent = open ? ' ▴' : ' ▾';
+    dom.filtersToggle.appendChild(arrow);
     dom.filtersToggle.setAttribute('aria-expanded', String(open));
   }
 
@@ -244,21 +243,10 @@
     const regionCountries = state.region
       ? (d.regionOptions.find((r) => r.code === state.region) || { countries: new Set() }).countries
       : null;
-    // 「現地が夜」判定: 同一 tz の現地時はフィルタ 1 回の間キャッシュする
-    const now = new Date();
-    const hourByTz = new Map();
-    const localHour = (tz) => {
-      if (!hourByTz.has(tz)) hourByTz.set(tz, IPTVData.localHour(tz, now));
-      return hourByTz.get(tz);
-    };
 
     state.filtered = d.entries.filter((e) => {
       if (state.country && e.country !== state.country) return false;
       if (regionCountries && !regionCountries.has(e.country)) return false;
-      if (state.nightOnly) {
-        const h = e.timezone ? localHour(e.timezone) : null; // tz 不明は対象外
-        if (h === null || h < 19 || h >= 23) return false;
-      }
       if (state.category && !e.categories.includes(state.category)) return false;
       if (state.language && !e.languages.includes(state.language)) return false;
       // HTTPS のみ: 再生手段の絞り込みなので、配信を持たないチャンネルには適用しない
@@ -728,7 +716,6 @@
     }, 150));
     dom.country.addEventListener('change', () => { state.country = dom.country.value; applyFilters(); });
     dom.region.addEventListener('change', () => { state.region = dom.region.value; applyFilters(); });
-    dom.nightOnly.addEventListener('change', () => { state.nightOnly = dom.nightOnly.checked; applyFilters(); });
     dom.category.addEventListener('change', () => { state.category = dom.category.value; applyFilters(); });
     dom.language.addEventListener('change', () => { state.language = dom.language.value; applyFilters(); });
     dom.sort.addEventListener('change', () => { state.sort = dom.sort.value; applyFilters(); });

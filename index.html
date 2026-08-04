@@ -35,9 +35,7 @@
     </div>
     <div class="toolbar" id="toolbar">
       <input id="search" type="search" placeholder="チャンネル名・国名で検索" autocomplete="off" aria-label="チャンネル検索">
-      <button id="filters-toggle" type="button" class="filters-toggle" aria-expanded="false" aria-controls="toolbar-filters">絞り込み ▾</button>
-      <button id="shuffle-btn" type="button" class="action-btn">ランダム選局</button>
-      <button id="view-toggle" type="button" class="action-btn" aria-pressed="false" hidden>テレビ欄で見る</button>
+      <button id="filters-toggle" type="button" class="filters-toggle" aria-expanded="false" aria-controls="toolbar-filters">絞り込み <span aria-hidden="true">▾</span></button>
       <div id="toolbar-filters" class="toolbar-filters">
         <select id="filter-country" aria-label="国・地域で絞り込み"></select>
         <select id="filter-region" aria-label="地域(大陸・経済圏)で絞り込み" hidden></select>
@@ -64,11 +62,9 @@
           <input id="fav-only" type="checkbox">
           お気に入りのみ
         </label>
-        <label class="check" id="night-only-label" title="チャンネルの現地時刻がゴールデンタイム(19–23 時)のものだけを表示" hidden>
-          <input id="night-only" type="checkbox">
-          現地 19–23 時
-        </label>
       </div>
+      <button id="shuffle-btn" type="button" class="action-btn">ランダム選局</button>
+      <button id="view-toggle" type="button" class="action-btn" aria-pressed="false" hidden>テレビ欄で見る</button>
     </div>
   </header>
 

@@ -195,12 +195,11 @@ button { font-family: inherit; }
 
 /* フィルタ群のラッパー。デスクトップでは contents 化して従来どおり
    ツールバーの並びに溶かし、モバイルでは開閉パネルになる(レスポンシブ節参照)。
-   order で「検索 → フィルタ → ボタン」の視覚順を DOM 順と独立に保つ */
-.toolbar input[type="search"] { order: 1; }
-.filters-toggle { order: 2; display: none; }
+   DOM 順 = 視覚順(検索 → フィルタ → ボタン)を保ち、Tab のフォーカス順を
+   乱さない。並べ替えるのはモバイルで開いたパネルを最後に回す 1 箇所だけ */
+.filters-toggle { display: none; }
 .toolbar-filters { display: contents; }
-.toolbar-filters > * { order: 3; border-left: 1px solid var(--hairline); }
-#shuffle-btn, #view-toggle { order: 4; }
+.toolbar-filters > * { border-left: 1px solid var(--hairline); }
 
 .filters-toggle {
   align-items: center;
@@ -992,9 +991,10 @@ button { font-family: inherit; }
     display: flex;
     flex-wrap: wrap;
     align-items: stretch;
-    order: 5;
+    order: 5; /* 検索・ボタン行の下にパネルを敷く(DOM 順はデスクトップの視覚順を優先) */
     flex: 1 1 100%;
     border-top: 1px solid var(--hairline);
+    border-left: none; /* .toolbar > * の区切り線はパネル自身には不要 */
   }
   .toolbar.filters-open .toolbar-filters > :first-child { border-left: none; }
 
