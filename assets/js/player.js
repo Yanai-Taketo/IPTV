@@ -449,7 +449,14 @@ const IPTVPlayer = (() => {
       URL.revokeObjectURL(m3uUrl);
       m3uUrl = null;
     }
-    if (lastFocus && lastFocus.focus) lastFocus.focus();
+    // <dialog> を閉じたときのフォーカス復帰はブラウザ側でも行われる。
+    // close イベント(タスクキュー経由 = 非同期)で無条件に focus() し直すと、
+    // 復帰済みのフォーカスをユーザーが既に別の場所へ移していた場合に
+    // それを奪い返してしまう。復帰されなかったときだけ自前で戻す
+    const active = document.activeElement;
+    if (lastFocus && lastFocus.focus && (!active || active === document.body)) {
+      lastFocus.focus();
+    }
     if (onCloseCallback) onCloseCallback();
   }
 

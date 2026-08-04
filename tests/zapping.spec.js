@@ -170,6 +170,21 @@ test.describe('ザッピング(前/次選局)', () => {
     await expect(page.locator('#search')).toHaveValue('mf');
     await expect(page.locator('#player-modal')).not.toHaveAttribute('open', '');
   });
+
+  test('閉じた直後にフォーカスを移しても奪い返されない', async ({ page }) => {
+    await page.locator('.card', { hasText: 'Multi Stream TV' }).click();
+    await expect(page.locator('#player-modal')).toHaveAttribute('open', '');
+
+    // close イベント(タスクキュー経由 = 非同期)が処理される前にフォーカスを移す。
+    // プレイヤーが無条件に復帰先へ focus() し直すと、ここで移した先が奪われる
+    await page.evaluate(() => {
+      document.getElementById('player-modal').close();
+      document.getElementById('search').focus();
+    });
+    await expect(page.locator('#search')).toBeFocused();
+    await page.keyboard.type('nhk');
+    await expect(page.locator('#search')).toHaveValue('nhk');
+  });
 });
 
 test.describe('キーボードショートカット(音量・ミュート・全画面)', () => {
