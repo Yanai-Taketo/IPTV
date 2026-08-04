@@ -16,8 +16,10 @@
     data: null,
     q: '',
     country: '',
+    region: '',
     category: '',
     language: '',
+    nightOnly: false, // 現地時刻 19–23 時のチャンネルのみ
     httpsOnly: PAGE_HTTPS, // HTTPS ページでは HTTP 配信は再生不可のため既定でオン
     checkedOnly: false,
     epgOnly: false,
@@ -46,6 +48,7 @@
       app: $('app'),
       search: $('search'),
       country: $('filter-country'),
+      region: $('filter-region'),
       category: $('filter-category'),
       language: $('filter-language'),
       sort: $('sort-order'),
@@ -56,6 +59,8 @@
       epgOnlyLabel: $('epg-only-label'),
       favOnly: $('fav-only'),
       favOnlyLabel: $('fav-only-label'),
+      nightOnly: $('night-only'),
+      nightOnlyLabel: $('night-only-label'),
       gridHeadNote: $('grid-head-note'),
       proxyBase: $('proxy-base'),
       proxySave: $('proxy-save'),
@@ -90,7 +95,7 @@
     dom.loadError.hidden = true;
     dom.loadingList.textContent = '';
     const items = {};
-    for (const name of ['channels', 'streams', 'feeds', 'logos', 'countries', 'categories', 'languages', 'playability', 'epg']) {
+    for (const name of ['channels', 'streams', 'feeds', 'logos', 'countries', 'categories', 'languages', 'regions', 'playability', 'epg']) {
       items[name] = progressItem(name);
     }
     const onProgress = (name, ok) => {
@@ -132,10 +137,22 @@
     const d = state.data;
     // 再試行時に選択肢が重複しないよう毎回作り直す
     dom.country.textContent = '';
+    dom.region.textContent = '';
     dom.category.textContent = '';
     dom.language.textContent = '';
     addOption(dom.country, '', `すべての国・地域 (${d.totals.countries})`);
     for (const c of d.countryOptions) addOption(dom.country, c.code, `${c.flag} ${c.name} (${c.count})`);
+
+    // 地域(大陸・経済圏)フィルタは regions.json が取得できた場合のみ表示
+    dom.region.hidden = !d.regionOptions.length;
+    if (d.regionOptions.length) {
+      addOption(dom.region, '', 'すべての地域');
+      for (const r of d.regionOptions) addOption(dom.region, r.code, `${r.name} (${r.count})`);
+    }
+
+    // 現地時刻フィルタはタイムゾーンを持つチャンネルがある場合のみ表示
+    dom.nightOnlyLabel.hidden = !d.entries.some((e) => e.timezone);
+    dom.nightOnly.checked = state.nightOnly;
 
     addOption(dom.category, '', 'すべてのカテゴリ');
     for (const c of d.categoryOptions) addOption(dom.category, c.id, `${c.name} (${c.count})`);
@@ -195,8 +212,24 @@
     if (!d) return;
     const tokens = state.q.toLowerCase().split(/\s+/).filter(Boolean);
 
+    const regionCountries = state.region
+      ? (d.regionOptions.find((r) => r.code === state.region) || { countries: new Set() }).countries
+      : null;
+    // 「現地が夜」判定: 同一 tz の現地時はフィルタ 1 回の間キャッシュする
+    const now = new Date();
+    const hourByTz = new Map();
+    const localHour = (tz) => {
+      if (!hourByTz.has(tz)) hourByTz.set(tz, IPTVData.localHour(tz, now));
+      return hourByTz.get(tz);
+    };
+
     state.filtered = d.entries.filter((e) => {
       if (state.country && e.country !== state.country) return false;
+      if (regionCountries && !regionCountries.has(e.country)) return false;
+      if (state.nightOnly) {
+        const h = e.timezone ? localHour(e.timezone) : null; // tz 不明は対象外
+        if (h === null || h < 19 || h >= 23) return false;
+      }
       if (state.category && !e.categories.includes(state.category)) return false;
       if (state.language && !e.languages.includes(state.language)) return false;
       if (state.httpsOnly && !e.hasHttps) return false;
@@ -308,6 +341,16 @@
       })
       .join(', ');
     meta.textContent = `${entry.flag} ${entry.countryName}${catNames ? ' · ' + catNames : ''}`;
+    if (entry.timezone) {
+      const t = IPTVData.localTime(entry.timezone, new Date());
+      if (t) {
+        const local = document.createElement('span');
+        local.className = 'card-local';
+        local.dataset.tz = entry.timezone;
+        local.textContent = ` · 現地 ${t}`;
+        meta.appendChild(local);
+      }
+    }
     body.appendChild(meta);
 
     if (IPTVEpg.get(entry.key)) {
@@ -413,6 +456,15 @@
     } else {
       // 番組表はあるが提供期間外(データが古い)— 行ごと隠す
       el.hidden = true;
+    }
+  }
+
+  // 描画済みカードの現地時刻表示を現在時刻に追従させる
+  function refreshLocalTimes() {
+    const now = new Date();
+    for (const el of dom.grid.querySelectorAll('.card-local')) {
+      const t = IPTVData.localTime(el.dataset.tz, now);
+      if (t) el.textContent = ` · 現地 ${t}`;
     }
   }
 
@@ -629,6 +681,8 @@
       applyFilters();
     }, 150));
     dom.country.addEventListener('change', () => { state.country = dom.country.value; applyFilters(); });
+    dom.region.addEventListener('change', () => { state.region = dom.region.value; applyFilters(); });
+    dom.nightOnly.addEventListener('change', () => { state.nightOnly = dom.nightOnly.checked; applyFilters(); });
     dom.category.addEventListener('change', () => { state.category = dom.category.value; applyFilters(); });
     dom.language.addEventListener('change', () => { state.language = dom.language.value; applyFilters(); });
     dom.sort.addEventListener('change', () => { state.sort = dom.sort.value; applyFilters(); });
@@ -684,6 +738,7 @@
     startClock();
     setInterval(() => {
       refreshEpgCards();
+      refreshLocalTimes();
       updateTimelineNow();
     }, 30000);
     loadData();

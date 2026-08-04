@@ -196,6 +196,10 @@ const IPTVPlayer = (() => {
     dom.flag.textContent = entry.flag || '🌐';
     dom.title.textContent = entry.name;
     const metaParts = [entry.countryName];
+    if (entry.timezone) {
+      const t = IPTVData.localTime(entry.timezone, new Date());
+      if (t) metaParts.push(`現地 ${t}`);
+    }
     if (entry.network) metaParts.push(entry.network);
     if (entry.closed) metaParts.push(`閉局: ${entry.closed}`);
     dom.meta.textContent = metaParts.join(' ・ ');

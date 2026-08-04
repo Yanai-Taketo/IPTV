@@ -416,6 +416,8 @@ button { font-family: inherit; }
   white-space: nowrap;
 }
 
+.card-local { color: var(--ink-soft); }
+
 .card-badges {
   display: flex;
   gap: 5px;
