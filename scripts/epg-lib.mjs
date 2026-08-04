@@ -28,6 +28,25 @@ export const DEFAULTS = {
   pruneAgeSec: 3 * 3600, // 生成時点よりこれ以上前に終了した番組は配信しない(サイズ削減)
 };
 
+/**
+ * GitHub Actions ランナーから番組が 0 件しか取れないサイト(2026-08 実測)。
+ * グラブ自体は成功するが応答が空で、選定枠だけを消費してしまうため
+ * 選定から除外し、代替ガイドを持つチャンネルは他サイトへ振り直す。
+ * zuragt.mn は別 IP からは取得できたため、データセンター IP ブロックが濃厚
+ * (docs/next-features.md §2-1)。回復が確認できたサイトはここから外すこと。
+ */
+export const EXCLUDED_SITES = [
+  'chaines-tv.orange.fr',
+  'clickthecity.com',
+  'distro.tv',
+  'm.tv.sms.cz',
+  'sat.tv',
+  'tvprofil.com',
+  'tvtv.us',
+  'wavve.com',
+  'zuragt.mn',
+];
+
 // ---- 選定 -------------------------------------------------------------------
 
 /**
@@ -44,27 +63,34 @@ export const DEFAULTS = {
  * @param {Array} guideRows guides.json の行 {channel, feed, site, site_id, lang}
  * @param {Array} feeds     feeds.json の行 {channel, id, is_main}
  * @param {Set<string>} wantedIds 対象チャンネル id の集合
- * @param {object} opts {maxSites, maxChannels}
+ * @param {object} opts {maxSites, maxChannels, excludedSites}
  * @returns {{rows: Array, stats: object}}
  */
 export function selectGuideRows(guideRows, feeds, wantedIds, opts = {}) {
   const maxSites = opts.maxSites ?? DEFAULTS.maxSites;
   const maxChannels = opts.maxChannels ?? DEFAULTS.maxChannels;
+  const excludedSites = new Set(opts.excludedSites || []);
 
   const mainFeedByChannel = new Map();
   for (const f of feeds) {
     if (f && f.is_main && f.channel) mainFeedByChannel.set(f.channel, f.id);
   }
 
-  // 対象チャンネルの有効なガイド行だけを集める
+  // 対象チャンネルの有効なガイド行だけを集める(除外サイトの行はここで落とし、
+  // 代替ガイドを持つチャンネルは残った行から通常どおり選定される)
   const rowsByChannel = new Map();
+  const channelsWithAnyGuide = new Set();
   for (const g of guideRows) {
     if (!g || !g.channel || !g.site || !g.site_id) continue;
     if (!wantedIds.has(g.channel)) continue;
+    channelsWithAnyGuide.add(g.channel);
+    if (excludedSites.has(g.site)) continue;
     let rows = rowsByChannel.get(g.channel);
     if (!rows) rowsByChannel.set(g.channel, (rows = []));
     rows.push(g);
   }
+  // 除外サイトにしかガイドが無く、選定から漏れたチャンネル数(ログ用)
+  const droppedByExclusion = channelsWithAnyGuide.size - rowsByChannel.size;
 
   // サイトのカバレッジ = そのサイトがガイドを持つ対象チャンネル数
   const siteCoverage = new Map();
@@ -144,6 +170,7 @@ export function selectGuideRows(guideRows, feeds, wantedIds, opts = {}) {
       withGuide: rowsByChannel.size,
       selected: rows.length,
       sites: sites.size,
+      droppedByExclusion,
       droppedBySiteCap,
       droppedByChannelCap,
     },

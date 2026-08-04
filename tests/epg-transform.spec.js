@@ -318,6 +318,30 @@ test.describe('selectGuideRows', () => {
     expect(rows.map((r) => r.channel).sort()).toEqual(['C1.jp', 'C2.jp', 'C3.jp', 'C4.jp']);
   });
 
+  test('excludedSites の行は選ばれず、代替ガイドを持つチャンネルは振り直される', () => {
+    const rowsIn = [
+      // C1 はブロックサイトが第一候補(カバレッジ最大)だが alt.com にもガイドがある
+      guideRow({ channel: 'C1.jp', feed: null, site: 'blocked.example', site_id: 'b1' }),
+      guideRow({ channel: 'C1.jp', feed: null, site: 'alt.com', site_id: 'a1' }),
+      // C2 はブロックサイトにしかガイドが無い → 選定から漏れる
+      guideRow({ channel: 'C2.jp', feed: null, site: 'blocked.example', site_id: 'b2' }),
+    ];
+    const wanted = new Set(['C1.jp', 'C2.jp']);
+    const { rows, stats } = lib.selectGuideRows(rowsIn, [], wanted, {
+      excludedSites: ['blocked.example'],
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].channel).toBe('C1.jp');
+    expect(rows[0].site).toBe('alt.com');
+    expect(stats.droppedByExclusion).toBe(1);
+  });
+
+  test('既定ではブロックサイトを除外しない(明示オプトイン)', () => {
+    const rowsIn = [guideRow({ site: lib.EXCLUDED_SITES[0], site_id: 'x' })];
+    const { rows } = lib.selectGuideRows(rowsIn, FEEDS, new Set(['A.jp']), {});
+    expect(rows).toHaveLength(1);
+  });
+
   test('maxChannels で決定的に切り詰める', () => {
     const rowsIn = ['C1.jp', 'C2.jp', 'C3.jp'].map((id) =>
       guideRow({ channel: id, feed: null, site: 'big.com', site_id: id })
@@ -355,6 +379,20 @@ test.describe('parseArgs', () => {
   test('値の欠落・フラグの誤消費はエラーになる', () => {
     expect(() => cli.parseArgs(argv('prepare', '--out'))).toThrow('--out には値が必要です');
     expect(() => cli.parseArgs(argv('convert', '--in', '--outdir', 'out'))).toThrow('--in には値が必要です');
+  });
+
+  test('--exclude-sites: 既定はランナーブロックサイト一覧、上書き・無効化できる', () => {
+    // 既知の 9 サイト(docs/next-features.md §2-1)が既定で除外対象になっている
+    expect(lib.EXCLUDED_SITES).toContain('tvtv.us');
+    expect(lib.EXCLUDED_SITES).toContain('zuragt.mn');
+    expect(lib.EXCLUDED_SITES).toHaveLength(9);
+    expect(cli.parseArgs(argv('prepare')).excludeSites).toEqual(lib.EXCLUDED_SITES);
+    expect(cli.parseArgs(argv('prepare', '--exclude-sites', 'a.com, b.com')).excludeSites).toEqual([
+      'a.com',
+      'b.com',
+    ]);
+    expect(cli.parseArgs(argv('prepare', '--exclude-sites', '')).excludeSites).toEqual([]);
+    expect(() => cli.parseArgs(argv('prepare', '--exclude-sites'))).toThrow('値が必要です');
   });
 
   test('--split-dir と --indir を受け付ける', () => {

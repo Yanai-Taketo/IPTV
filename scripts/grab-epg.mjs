@@ -30,7 +30,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { DEFAULTS, selectGuideRows, buildChannelsXml, convertGuide } from './epg-lib.mjs';
+import {
+  DEFAULTS,
+  EXCLUDED_SITES,
+  selectGuideRows,
+  buildChannelsXml,
+  convertGuide,
+} from './epg-lib.mjs';
 
 const API_BASE = 'https://iptv-org.github.io/api';
 
@@ -48,6 +54,9 @@ export function parseArgs(argv) {
     maxChannels: DEFAULTS.maxChannels,
     shards: DEFAULTS.shardCount,
     days: null,
+    // ランナー IP からデータが取れないサイトの除外リスト(epg-lib.mjs 参照)。
+    // --exclude-sites "a,b" で上書き、--exclude-sites "" で無効化できる
+    excludeSites: EXCLUDED_SITES,
   };
   let i = 0;
   // 値を取るフラグの値。欠落やフラグの誤消費を黙って通さない
@@ -75,7 +84,11 @@ export function parseArgs(argv) {
     else if (rest[i] === '--max-channels') args.maxChannels = positiveInt('--max-channels');
     else if (rest[i] === '--shards') args.shards = positiveInt('--shards');
     else if (rest[i] === '--days') args.days = positiveInt('--days');
-    else throw new Error(`unknown argument: ${rest[i]}`);
+    else if (rest[i] === '--exclude-sites') {
+      const v = rest[++i];
+      if (v === undefined || v.startsWith('--')) throw new Error('--exclude-sites には値が必要です');
+      args.excludeSites = v.split(',').map((s) => s.trim()).filter(Boolean);
+    } else throw new Error(`unknown argument: ${rest[i]}`);
   }
   return args;
 }
@@ -119,9 +132,13 @@ async function prepare(args) {
   const { wanted, verified } = wantedChannels(streams, playability);
   console.log(`candidate channels: ${wanted.size} (${verified ? '再生確認済みのみ' : '未確認を含む'})`);
 
+  if (args.excludeSites.length) {
+    console.log(`excluding ${args.excludeSites.length} runner-blocked sites: ${args.excludeSites.join(', ')}`);
+  }
   const { rows, stats } = selectGuideRows(guides, feeds, wanted, {
     maxSites: args.maxSites,
     maxChannels: args.maxChannels,
+    excludedSites: args.excludeSites,
   });
   if (!rows.length) {
     throw new Error('グラブ対象が 0 件です(選定条件が厳しすぎるか、入力データが不正です)');
@@ -129,6 +146,7 @@ async function prepare(args) {
   console.log(
     `selected ${stats.selected} channels over ${stats.sites} sites ` +
       `(guide coverage ${stats.withGuide}/${stats.wanted}, ` +
+      `excluded-site-only ${stats.droppedByExclusion}, ` +
       `site-capped ${stats.droppedBySiteCap}, channel-capped ${stats.droppedByChannelCap})`
   );
 
