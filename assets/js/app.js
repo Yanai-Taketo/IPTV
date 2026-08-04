@@ -16,6 +16,7 @@
     category: '',
     language: '',
     httpsOnly: PAGE_HTTPS, // HTTPS ページでは HTTP 配信は再生不可のため既定でオン
+    checkedOnly: false,
     sort: 'name',
     filtered: [],
     rendered: 0,
@@ -39,6 +40,12 @@
       language: $('filter-language'),
       sort: $('sort-order'),
       httpsOnly: $('https-only'),
+      checkedOnly: $('checked-only'),
+      checkedOnlyLabel: $('checked-only-label'),
+      gridHeadNote: $('grid-head-note'),
+      proxyBase: $('proxy-base'),
+      proxySave: $('proxy-save'),
+      proxyStatus: $('proxy-status'),
       stats: $('stats'),
       grid: $('grid'),
       sentinel: $('sentinel'),
@@ -62,7 +69,7 @@
     dom.loadError.hidden = true;
     dom.loadingList.textContent = '';
     const items = {};
-    for (const name of ['channels', 'streams', 'feeds', 'logos', 'countries', 'categories', 'languages']) {
+    for (const name of ['channels', 'streams', 'feeds', 'logos', 'countries', 'categories', 'languages', 'playability']) {
       items[name] = progressItem(name);
     }
     try {
@@ -110,6 +117,19 @@
     for (const l of d.languageOptions) addOption(dom.language, l.code, `${l.name} (${l.count})`);
 
     dom.httpsOnly.checked = state.httpsOnly;
+
+    // 再生可能性インデックスがある場合のみフィルタと確認時刻を表示
+    if (d.playabilityMeta) {
+      dom.checkedOnlyLabel.hidden = false;
+      dom.checkedOnlyLabel.lastChild.textContent = ` 再生確認済みのみ (${d.totals.checkedOk.toLocaleString('ja-JP')})`;
+      dom.checkedOnly.checked = state.checkedOnly;
+      const at = new Date(d.playabilityMeta.generatedAt);
+      if (!Number.isNaN(at.getTime())) {
+        dom.gridHeadNote.textContent = `再生確認 ${at.toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+      }
+    } else {
+      dom.checkedOnlyLabel.hidden = true;
+    }
   }
 
   // ---- フィルタリング --------------------------------------------------------
@@ -124,16 +144,19 @@
       if (state.category && !e.categories.includes(state.category)) return false;
       if (state.language && !e.languages.includes(state.language)) return false;
       if (state.httpsOnly && !e.hasHttps) return false;
+      if (state.checkedOnly && e.playability !== 'ok') return false;
       for (const t of tokens) {
         if (e.haystack.indexOf(t) === -1) return false;
       }
       return true;
     });
 
+    // 再生確認済み → 未確認 → 応答なし、の順を最優先に(インデックス無しなら影響なし)
+    const prank = (e) => (e.playability === 'ok' ? 0 : e.playability === 'dead' ? 2 : 1);
     if (state.sort === 'country') {
-      state.filtered.sort((a, b) => a.countryName.localeCompare(b.countryName, 'en') || a.sortKey.localeCompare(b.sortKey, 'en'));
+      state.filtered.sort((a, b) => (prank(a) - prank(b)) || a.countryName.localeCompare(b.countryName, 'en') || a.sortKey.localeCompare(b.sortKey, 'en'));
     } else {
-      state.filtered.sort((a, b) => a.sortKey.localeCompare(b.sortKey, 'en'));
+      state.filtered.sort((a, b) => (prank(a) - prank(b)) || a.sortKey.localeCompare(b.sortKey, 'en'));
     }
 
     dom.stats.textContent = `${state.filtered.length.toLocaleString('ja-JP')} / ${d.totals.channels.toLocaleString('ja-JP')} チャンネル`;
@@ -197,8 +220,23 @@
     meta.textContent = `${entry.flag} ${entry.countryName}${catNames ? ' · ' + catNames : ''}`;
     body.appendChild(meta);
 
+    if (entry.playability === 'dead') card.classList.add('card-dead');
+
     const badges = document.createElement('div');
     badges.className = 'card-badges';
+    if (entry.playability === 'ok') {
+      const okb = document.createElement('span');
+      okb.className = 'badge ok';
+      okb.textContent = '✓ 確認済';
+      okb.title = '直近のチェックでブラウザから再生できることを確認済みの配信があります';
+      badges.appendChild(okb);
+    } else if (entry.playability === 'dead') {
+      const db = document.createElement('span');
+      db.className = 'badge dead';
+      db.textContent = '応答なし';
+      db.title = '直近のチェックでどの配信からも応答がありませんでした';
+      badges.appendChild(db);
+    }
     if (entry.bestQuality) {
       const q = document.createElement('span');
       q.className = 'badge quality';
@@ -297,6 +335,13 @@
     dom.language.addEventListener('change', () => { state.language = dom.language.value; applyFilters(); });
     dom.sort.addEventListener('change', () => { state.sort = dom.sort.value; applyFilters(); });
     dom.httpsOnly.addEventListener('change', () => { state.httpsOnly = dom.httpsOnly.checked; applyFilters(); });
+    dom.checkedOnly.addEventListener('change', () => { state.checkedOnly = dom.checkedOnly.checked; applyFilters(); });
+    dom.proxyBase.value = IPTVPlayer.getProxyBase();
+    dom.proxySave.addEventListener('click', () => {
+      const v = dom.proxyBase.value.trim();
+      IPTVPlayer.setProxyBase(v);
+      dom.proxyStatus.textContent = v ? `プロキシを設定しました: ${v}` : 'プロキシ設定を解除しました';
+    });
     dom.shuffle.addEventListener('click', () => {
       if (!state.filtered.length) return;
       const entry = state.filtered[Math.floor(Math.random() * state.filtered.length)];

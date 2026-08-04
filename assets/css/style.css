@@ -433,6 +433,11 @@ button { font-family: inherit; }
 
 .badge.quality { background: var(--ink); border-color: var(--ink); color: var(--paper); }
 .badge.warn { border-color: var(--warn); color: var(--warn); }
+.badge.ok { border-color: var(--ok); color: var(--ok); }
+.badge.dead { border-color: var(--hairline-dark); color: var(--hairline-dark); }
+
+.card-dead { opacity: 0.55; }
+.card-dead:hover { opacity: 1; }
 
 .sentinel { height: 4px; }
 
@@ -619,6 +624,32 @@ button { font-family: inherit; }
 }
 
 .site-footer p { margin: 0; max-width: 72em; }
+
+.advanced { margin-top: 10px; max-width: 72em; }
+
+.advanced summary {
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.advanced-row { display: flex; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+
+.advanced-row input {
+  flex: 1 1 280px;
+  background: var(--surface);
+  border: 1px solid var(--hairline-dark);
+  padding: 7px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.advanced-note { font-family: var(--mono); font-size: 11px; }
 
 /* ---- レスポンシブ ---- */
 

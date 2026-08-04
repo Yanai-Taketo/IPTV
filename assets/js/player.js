@@ -10,6 +10,7 @@ const IPTVPlayer = (() => {
   const DASH_CDN = 'https://cdn.jsdelivr.net/npm/dashjs@5.2.0/dist/modern/umd/dash.all.min.js';
   const DASH_SRI = 'sha384-DUqWPzOl/i7/DGF7SBoe4NrlZOMxxomlJsg3X0daS5SBeFxco3dmwWQPFr2oauXn';
   const WATCHDOG_MS = 25000;
+  const PROXY_KEY = 'iptv:proxy-base';
 
   let dom = null;
   let hls = null;
@@ -26,6 +27,61 @@ const IPTVPlayer = (() => {
   let lastFocus = null;
   let onCloseCallback = null;
   let m3uUrl = null;
+  let nativeRescueTried = false; // hls.js の CORS 失敗後に一度だけネイティブ HLS を試す
+  let upgradedFromHttp = false;  // 混在コンテンツ回避の https 昇格を試行中か
+  let currentPlayUrl = null;
+
+  // ---- 任意プロキシ(既定 OFF・ユーザー自身のプロキシのみ想定) ---------------
+
+  function getProxyBase() {
+    try {
+      return (localStorage.getItem(PROXY_KEY) || '').trim();
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function setProxyBase(value) {
+    try {
+      if (value) localStorage.setItem(PROXY_KEY, value.trim());
+      else localStorage.removeItem(PROXY_KEY);
+    } catch (e) { /* プライベートモード等では保存不可 */ }
+  }
+
+  let proxyLoaderClass = null;
+
+  // hls.js の全リクエスト(マニフェスト・セグメント・AES キー)をプロキシ経由にする。
+  // 相対 URI の解決が壊れないよう、response.url は元のストリーム URL に戻す。
+  function getProxyLoader() {
+    if (proxyLoaderClass || !window.Hls) return proxyLoaderClass;
+    class ProxyLoader extends Hls.DefaultConfig.loader {
+      load(context, config, callbacks) {
+        const upstream = context.url;
+        context.url = getProxyBase() + encodeURIComponent(upstream);
+        const onSuccess = callbacks.onSuccess;
+        callbacks.onSuccess = (response, stats, ctx, networkDetails) => {
+          response.url = upstream;
+          onSuccess(response, stats, ctx, networkDetails);
+        };
+        super.load(context, config, callbacks);
+      }
+    }
+    proxyLoaderClass = ProxyLoader;
+    return proxyLoaderClass;
+  }
+
+  // ---- Apple ネイティブ HLS(CORS 制約を受けない media 読み込み) -------------
+
+  function canNativeHls() {
+    return dom.video.canPlayType('application/vnd.apple.mpegurl') !== '';
+  }
+
+  function preferNativeHls() {
+    // Safari/iOS ではネイティブ HLS を優先すると CORS 未対応の配信も再生できる。
+    // プロキシ設定時はセグメント URL の書き換えが必要なため hls.js を使う。
+    return canNativeHls() && !getProxyBase() &&
+      (navigator.vendor === 'Apple Computer, Inc.' || /iPad|iPhone|iPod/.test(navigator.userAgent));
+  }
 
   // ---- URL 分類 -------------------------------------------------------------
 
@@ -227,13 +283,23 @@ const IPTVPlayer = (() => {
 
     const stream = entry.streams[index];
     const kind = classifyUrl(stream.url);
+    nativeRescueTried = false;
+    upgradedFromHttp = false;
     let note = '';
     if (stream.userAgent || stream.referrer) note = '(UA/Referrer 指定あり — 失敗する可能性があります)';
     setStatus(`接続中… ${stream.quality || ''} ${note}`.trim());
 
     switch (kind) {
       case 'mixed-content':
-        fail('HTTPS ページからは HTTP 配信を再生できません(混在コンテンツ制限)');
+        if (getProxyBase()) {
+          // プロキシ(https)経由なら混在コンテンツにならない
+          playHls(stream.url, token);
+          return;
+        }
+        // TLS を話せるサーバも少数ながら存在するため、一度だけ https 昇格を試す
+        upgradedFromHttp = true;
+        setStatus('HTTP 配信のため HTTPS へ昇格して試行しています…', 'warn');
+        playHls(stream.url.replace(/^http:/i, 'https:'), token);
         return;
       case 'unsupported-protocol':
         fail('このプロトコル (rtmp/rtsp など) はブラウザで再生できません');
@@ -270,9 +336,14 @@ const IPTVPlayer = (() => {
   // ---- HLS ------------------------------------------------------------------
 
   function playHls(url, token) {
+    currentPlayUrl = url;
+    if (preferNativeHls()) {
+      playNative(url, token);
+      return;
+    }
     if (window.Hls && Hls.isSupported()) {
       startWatchdog(token);
-      hls = new Hls({
+      const config = {
         backBufferLength: 90,
         capLevelToPlayerSize: true,
         // ザッピング時に数十秒待たせないための fail-fast 設定
@@ -284,7 +355,9 @@ const IPTVPlayer = (() => {
             errorRetry: { maxNumRetry: 1, retryDelayMs: 500, maxRetryDelayMs: 1000 },
           },
         },
-      });
+      };
+      if (getProxyBase() && getProxyLoader()) config.loader = getProxyLoader();
+      hls = new Hls(config);
       hls.on(Hls.Events.ERROR, (evt, data) => {
         if (token !== playToken) return;
         onHlsError(data);
@@ -328,6 +401,16 @@ const IPTVPlayer = (() => {
         startWatchdog(playToken);
         try { hls.startLoad(); return; } catch (e) { /* fallthrough */ }
       }
+      // Safari 等ネイティブ HLS 対応ブラウザでは、CORS 起因の失敗を
+      // media 読み込み(CORS 非適用)で救済できることがある
+      if (!nativeRescueTried && canNativeHls() && !getProxyBase() && currentPlayUrl) {
+        nativeRescueTried = true;
+        setStatus('ネイティブ HLS で再試行しています…', 'warn');
+        try { hls.destroy(); } catch (e) { /* noop */ }
+        hls = null;
+        playNative(currentPlayUrl, playToken);
+        return;
+      }
       const code = data.response && data.response.code;
       if (code === 403) fail('アクセス拒否 (403) — 地域制限の可能性');
       else if (code === 404) fail('配信が見つかりません (404)');
@@ -341,6 +424,7 @@ const IPTVPlayer = (() => {
   // ---- ネイティブ / DASH ----------------------------------------------------
 
   function playNative(url, token) {
+    currentPlayUrl = url;
     startWatchdog(token);
     dom.video.onerror = () => {
       if (token !== playToken) return;
@@ -376,11 +460,18 @@ const IPTVPlayer = (() => {
   }
 
   function playDash(url, token) {
+    currentPlayUrl = url;
     setStatus('DASH プレイヤーを読み込み中…');
     startWatchdog(token);
     loadDashJs().then(() => {
       if (token !== playToken) return;
       dash = dashjs.MediaPlayer().create();
+      if (getProxyBase()) {
+        dash.addRequestInterceptor((request) => {
+          request.url = getProxyBase() + encodeURIComponent(request.url);
+          return Promise.resolve(request);
+        });
+      }
       dash.on('error', () => {
         if (token !== playToken) return;
         fail('DASH 配信に接続できません(配信停止 / CORS 未対応の可能性)');
@@ -401,6 +492,10 @@ const IPTVPlayer = (() => {
 
   function fail(reason) {
     clearWatchdog();
+    if (upgradedFromHttp) {
+      reason = `HTTP 配信のため再生できません(HTTPS 昇格も失敗: ${reason})`;
+      upgradedFromHttp = false;
+    }
     if (currentIndex >= 0) failReasons.set(currentIndex, reason);
     updateVariantStates();
 
@@ -479,5 +574,5 @@ const IPTVPlayer = (() => {
     return lines.join('\n') + '\n';
   }
 
-  return { init, open, close, classifyUrl };
+  return { init, open, close, classifyUrl, getProxyBase, setProxyBase };
 })();

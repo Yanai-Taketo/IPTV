@@ -46,6 +46,10 @@
         <input id="https-only" type="checkbox">
         HTTPS のみ
       </label>
+      <label class="check" id="checked-only-label" hidden>
+        <input id="checked-only" type="checkbox">
+        再生確認済みのみ
+      </label>
       <button id="shuffle-btn" type="button" class="action-btn">ランダム選局</button>
     </div>
   </header>
@@ -66,9 +70,9 @@
     </div>
 
     <div id="app" hidden>
-      <div class="grid-head" aria-hidden="true">
-        <span>PROGRAMME GRID</span>
-        <span>すべての公開チャンネル</span>
+      <div class="grid-head">
+        <span aria-hidden="true">PROGRAMME GRID</span>
+        <span id="grid-head-note">すべての公開チャンネル</span>
       </div>
       <div id="grid" class="grid"></div>
       <p id="empty" class="center-screen" hidden>条件に一致するチャンネルがありません</p>
@@ -112,6 +116,19 @@
       / <a href="https://github.com/iptv-org/api" target="_blank" rel="noopener noreferrer">iptv-org/api</a>(パブリックドメイン)。
       各ストリームの著作権はそれぞれの放送局に帰属します。アダルトチャンネルはデータソースの方針により含まれていません。
     </p>
+    <details class="advanced">
+      <summary>詳細設定</summary>
+      <p>
+        ストリーム用プロキシ URL(任意)。設定するとすべてのストリーム要求 (HLS/DASH) が
+        この URL 経由になります。<strong>必ず自分専用に用意したプロキシのみ</strong>を設定してください
+        (帯域・法的責任はプロキシ運用者が負います)。
+      </p>
+      <div class="advanced-row">
+        <input id="proxy-base" type="url" placeholder="https://your-worker.example.workers.dev/?url=" aria-label="プロキシ URL">
+        <button id="proxy-save" type="button" class="action-btn">保存</button>
+      </div>
+      <p id="proxy-status" class="advanced-note"></p>
+    </details>
   </footer>
 
   <script src="assets/js/data.js"></script>

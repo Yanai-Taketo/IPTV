@@ -79,6 +79,20 @@ npx http-server -p 8080 .
 - ストリームの約 1 割は `channel: null`(タイトルのみ)→ タイトル単位でグルーピングして表示
 - `streams.json` は DMCA / NSFW ブロックリスト適用済み
 
+## 再生可能性インデックス
+
+全ストリームを定期プローブして再生可能性を記録する仕組みを備えています
+(調査の詳細と背景は [docs/playability-research.md](docs/playability-research.md) を参照)。
+
+- `scripts/probe-streams.mjs` — 全ストリームをチェックして `data/playability.json` を生成
+- `.github/workflows/probe-playability.yml` — 毎日自動更新(デフォルトブランチ上で有効。
+  手動実行: Actions → Probe stream playability → Run workflow)
+- アプリは同ファイルがあれば「✓ 確認済」バッジ・「再生確認済みのみ」フィルタ・
+  確認済み優先の並び替えを有効化します(無くても従来どおり動作)
+
+また、Safari/iOS ではネイティブ HLS を優先し(CORS 制約を受けないため再生できる配信が増える)、
+フッターの「詳細設定」から**自分専用の**ストリームプロキシ URL を任意で設定できます(既定 OFF)。
+
 ## ブラウザ再生の制約(既知の制限)
 
 IPTV ストリームの多くはブラウザ再生を想定していないサーバから配信されているため、

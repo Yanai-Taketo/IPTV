@@ -27,6 +27,11 @@ async function routeApi(page) {
     return route.abort();
   });
 
+  // 再生可能性インデックスは既定では「無し」(404)。個別テストで上書きする。
+  await page.route('**/data/playability.json', (route) =>
+    route.fulfill({ status: 404, contentType: 'application/json', body: 'not found' })
+  );
+
   await page.route('https://iptv-org.github.io/api/*.json', (route) => {
     const name = route.request().url().split('/').pop();
     const file = path.join(FIXTURES, 'api', name);
