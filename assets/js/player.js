@@ -138,6 +138,10 @@ const IPTVPlayer = (() => {
       setStatus('● 再生中' + (s && s.quality ? ` (${s.quality})` : ''), 'ok');
       if (onPlayingCallback && entry) onPlayingCallback(entry.key);
     });
+    // バックグラウンドタブでは setInterval が間引かれるため、復帰時に即座に追いつかせる
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) renderLocalTime();
+    });
   }
 
   function currentStream() {
@@ -204,6 +208,7 @@ const IPTVPlayer = (() => {
     renderVariants();
     renderEpg();
     startEpgTimer();
+    startClock();
     if (!dom.modal.open) dom.modal.showModal();
     if (!entry.streams.length) {
       // 配信 URL 未登録のチャンネル: 再生は試みず、情報表示のみ
@@ -223,6 +228,7 @@ const IPTVPlayer = (() => {
   function handleDialogClose() {
     teardown();
     stopEpgTimer();
+    stopClock();
     entry = null;
     currentIndex = -1;
     if (dom.epg) {
@@ -292,25 +298,54 @@ const IPTVPlayer = (() => {
   const EPG_REFRESH_MS = 30000;
   let epgTimer = 0;
 
-  /** ヘッダのメタ情報。現地時刻を含むため定期的に描き直す */
+  /** ヘッダのメタ情報。現地時刻は span に分離し、1 秒ごとにそこだけ差し替える */
   function renderMeta() {
     if (!entry) return;
-    const parts = [entry.countryName];
-    if (entry.timezone) {
-      const t = IPTVData.localTime(entry.timezone, new Date());
-      if (t) parts.push(`現地 ${t}`);
+    localTimeEl = null;
+    dom.meta.textContent = '';
+    const parts = [document.createTextNode(entry.countryName)];
+    if (entry.timezone && IPTVData.localTime(entry.timezone, new Date(), true)) {
+      localTimeEl = document.createElement('span');
+      localTimeEl.className = 'player-local';
+      parts.push(localTimeEl);
     }
-    if (entry.network) parts.push(entry.network);
-    if (entry.closed) parts.push(`閉局: ${entry.closed}`);
-    dom.meta.textContent = parts.join(' ・ ');
+    if (entry.network) parts.push(document.createTextNode(entry.network));
+    if (entry.closed) parts.push(document.createTextNode(`閉局: ${entry.closed}`));
+    parts.forEach((node, i) => {
+      if (i) dom.meta.appendChild(document.createTextNode(' ・ '));
+      dom.meta.appendChild(node);
+    });
+    renderLocalTime();
+  }
+
+  // ---- 現地時刻の実時間更新 --------------------------------------------------
+
+  const CLOCK_MS = 1000;
+  let clockTimer = 0;
+  let localTimeEl = null;
+
+  /** 視聴中の現地時刻を現在時刻へ追従させる(秒まで表示するので毎秒更新) */
+  function renderLocalTime() {
+    if (!localTimeEl || !entry) return;
+    const t = IPTVData.localTime(entry.timezone, new Date(), true);
+    if (t) localTimeEl.textContent = `現地 ${t}`;
+  }
+
+  function startClock() {
+    stopClock();
+    clockTimer = setInterval(renderLocalTime, CLOCK_MS);
+  }
+
+  function stopClock() {
+    if (clockTimer) {
+      clearInterval(clockTimer);
+      clockTimer = 0;
+    }
   }
 
   function startEpgTimer() {
     stopEpgTimer();
-    epgTimer = setInterval(() => {
-      renderMeta();
-      renderEpg();
-    }, EPG_REFRESH_MS);
+    epgTimer = setInterval(renderEpg, EPG_REFRESH_MS);
   }
 
   function stopEpgTimer() {

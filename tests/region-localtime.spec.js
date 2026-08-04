@@ -52,11 +52,15 @@ test.describe('地域フィルタ + 現地時刻', () => {
     await expect(nhk.locator('.card-local')).toHaveText(' · 現地 21:01');
 
     await nhk.click();
-    await expect(page.locator('#player-meta')).toContainText('現地 21:01');
+    // 視聴中は秒まで表示し、毎秒更新する(止まって見えないように)
+    await expect(page.locator('#player-meta .player-local')).toHaveText('現地 21:01:00');
+    await page.clock.fastForward('00:01');
+    await expect(page.locator('#player-meta .player-local')).toHaveText('現地 21:01:01');
 
     // 視聴中(モーダルを開いたまま)も現地時刻は止まらない
     await page.clock.fastForward('05:00');
-    await expect(page.locator('#player-meta')).toContainText('現地 21:06');
+    await expect(page.locator('#player-meta .player-local')).toHaveText('現地 21:06:01');
+    await expect(page.locator('#player-meta')).toContainText('Japan ・ 現地 21:06:01 ・ NHK');
   });
 
 });
