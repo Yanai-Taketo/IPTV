@@ -23,6 +23,8 @@
     checkedOnly: false,
     epgOnly: false,
     favOnly: false,
+    progSearch: false, // 検索語を番組タイトルにも当てる(「番組名も検索」)
+    progHitTokens: new Map(), // チャンネルキー → 番組タイトル側で拾ったトークン
     sort: 'name',
     view: 'cards', // 'cards' | 'timeline'(テレビ欄)
     filtered: [],
@@ -60,6 +62,8 @@
       epgOnlyLabel: $('epg-only-label'),
       favOnly: $('fav-only'),
       favOnlyLabel: $('fav-only-label'),
+      progSearch: $('prog-search'),
+      progSearchLabel: $('prog-search-label'),
       gridHeadNote: $('grid-head-note'),
       proxyBase: $('proxy-base'),
       proxySave: $('proxy-save'),
@@ -191,6 +195,11 @@
       dom.epgOnlyLabel.hidden = true;
     }
 
+    // 番組タイトル検索も番組表データがある環境でのみ提供する
+    dom.progSearchLabel.hidden = !(state.epgCount > 0);
+    if (state.epgCount === 0) state.progSearch = false;
+    dom.progSearch.checked = state.progSearch;
+
     dom.favOnly.checked = state.favOnly;
     updateFavLabel();
 
@@ -217,6 +226,9 @@
     if (state.checkedOnly) n++;
     if (state.epgOnly) n++;
     if (state.favOnly) n++;
+    // 絞り込みではなく検索対象を広げる操作だが、パネルを畳んだままでも
+    // 「既定と違う状態」だと分かるよう同じバッジに数える
+    if (state.progSearch) n++;
     return n;
   }
 
@@ -244,6 +256,11 @@
       ? (d.regionOptions.find((r) => r.code === state.region) || { countries: new Set() }).countries
       : null;
 
+    // 番組タイトル検索: チャンネル情報で拾えなかったトークンだけを番組表に当てる。
+    // 一致したトークンは「どの番組で当たったか」を出すためにチャンネル単位で残す
+    const progSearch = state.progSearch && tokens.length > 0 && IPTVEpg.isLoaded();
+    const progHits = new Map();
+
     state.filtered = d.entries.filter((e) => {
       if (state.country && e.country !== state.country) return false;
       if (regionCountries && !regionCountries.has(e.country)) return false;
@@ -254,11 +271,18 @@
       if (state.checkedOnly && e.playability !== 'ok') return false;
       if (state.epgOnly && !IPTVEpg.get(e.key)) return false;
       if (state.favOnly && !IPTVStore.isFavorite(e.key)) return false;
-      for (const t of tokens) {
-        if (e.haystack.indexOf(t) === -1) return false;
+      const missing = tokens.filter((t) => e.haystack.indexOf(t) === -1);
+      if (missing.length) {
+        if (!progSearch) return false;
+        const titles = IPTVEpg.titleHaystack(e.key);
+        for (const t of missing) {
+          if (titles.indexOf(t) === -1) return false;
+        }
+        progHits.set(e.key, missing);
       }
       return true;
     });
+    state.progHitTokens = progHits;
 
     // お気に入りを常に先頭へ。その中では再生確認済み → 未確認 → 応答なし → 配信なし、の順
     const frank = (e) => (IPTVStore.isFavorite(e.key) ? 0 : 1);
@@ -291,6 +315,8 @@
       dom.empty.hidden = state.filtered.length > 0;
     }
     renderChunk();
+    // モーダルを開いたままフィルタが変わることがある(検索・お気に入り解除など)
+    syncPlayerNav();
   }
 
   // ---- グリッド描画 ----------------------------------------------------------
@@ -465,6 +491,31 @@
 
   // ---- カードの番組表(現在番組 / 次番組) -----------------------------------
 
+  /** タイトルが検索トークンをすべて含むか(番組タイトル検索の一致判定) */
+  function titleMatches(title, tokens) {
+    const t = title.toLowerCase();
+    return tokens.every((tok) => t.indexOf(tok) !== -1);
+  }
+
+  /**
+   * 番組タイトル検索で一致した番組。まだ終わっていない番組を優先し、
+   * 無ければ最初の一致(終了済み)を返す。一致が無ければ null
+   */
+  function matchedProgram(entry) {
+    const tokens = state.progHitTokens.get(entry.key);
+    if (!tokens) return null;
+    const ch = IPTVEpg.get(entry.key);
+    if (!ch) return null;
+    const nowSec = Math.floor(Date.now() / 1000);
+    let ended = null;
+    for (const [start, dur, title] of ch.p) {
+      if (!titleMatches(title, tokens)) continue;
+      if (start + dur > nowSec) return { start, dur, title };
+      if (!ended) ended = { start, dur, title };
+    }
+    return ended;
+  }
+
   function updateCardEpg(el, entry) {
     const ch = IPTVEpg.get(entry.key);
     if (!ch) {
@@ -499,10 +550,19 @@
       title.className = 'card-epg-title card-epg-next';
       title.textContent = `次 ${IPTVEpg.fmtTime(next.start)} ${next.title}`;
       el.appendChild(title);
-    } else {
-      // 番組表はあるが提供期間外(データが古い)— 行ごと隠す
-      el.hidden = true;
     }
+
+    // 番組タイトル検索でヒットした番組(現在番組そのものなら重ねて出さない)
+    const hit = matchedProgram(entry);
+    if (hit && !(current && current.start === hit.start && current.title === hit.title)) {
+      const found = document.createElement('span');
+      found.className = 'card-epg-title card-epg-hit';
+      found.textContent = `🔍 ${IPTVEpg.fmtDayTime(hit.start)} ${hit.title}`;
+      el.appendChild(found);
+    }
+
+    // 現在番組も次番組も検索一致も無い(提供期間外)— 行ごと隠す
+    el.hidden = !el.firstChild;
   }
 
   // 描画済みカードの現地時刻表示を現在時刻に追従させる
@@ -609,6 +669,7 @@
     ch.addEventListener('click', () => openEntry(entry));
     row.appendChild(ch);
 
+    const hitTokens = state.progHitTokens.get(entry.key) || null;
     const track = document.createElement('div');
     track.className = 'tl-track';
     for (const [start, dur, title] of IPTVEpg.get(entry.key).p) {
@@ -632,6 +693,12 @@
       const time = document.createElement('span');
       time.className = 'tl-prog-time';
       time.textContent = IPTVEpg.fmtTime(start);
+      // 番組タイトル検索の一致は、色だけでなく 🔍 マークでも分かるようにする
+      if (hitTokens && titleMatches(title, hitTokens)) {
+        block.classList.add('tl-match');
+        time.textContent = `🔍 ${time.textContent}`;
+        block.title = `検索一致 ・ ${block.title}`;
+      }
       block.appendChild(time);
       block.addEventListener('click', () => openEntry(entry));
       track.appendChild(block);
@@ -709,6 +776,36 @@
   function openEntry(entry) {
     history.replaceState(null, '', `#play=${encodeURIComponent(entry.key)}`);
     IPTVPlayer.open(entry);
+    syncPlayerNav();
+  }
+
+  // ---- ザッピング(前 / 次の選局) --------------------------------------------
+  //
+  // 巡回する並びは state.filtered そのもの — お気に入り先頭・最近見た順などの
+  // 並べ替えが効いた「画面に見えている順」で選局する。一覧の外にあるチャンネル
+  // (ディープリンクで開いた後にフィルタを変えた場合など)では位置が定まらない
+  // ため、前/次の操作を無効にする。
+
+  /** 再生中チャンネルの一覧内での位置。一覧に無ければ -1 */
+  function playingIndex() {
+    const key = IPTVPlayer.currentKey();
+    if (key === null) return -1;
+    return state.filtered.findIndex((e) => e.key === key);
+  }
+
+  /** プレイヤーの位置表示とボタン活性を現在のフィルタ結果に合わせる */
+  function syncPlayerNav() {
+    if (!IPTVPlayer.isOpen()) return;
+    const index = playingIndex();
+    IPTVPlayer.setNav(index === -1 ? null : { index, total: state.filtered.length });
+  }
+
+  function navigateChannel(delta) {
+    const index = playingIndex();
+    if (index === -1) return;
+    const next = index + delta;
+    if (next < 0 || next >= state.filtered.length) return; // 端では止まる(巡回しない)
+    openEntry(state.filtered[next]);
   }
 
   function openFromHash() {
@@ -721,7 +818,10 @@
       return; // 壊れたパーセントエンコーディングは黙って無視する
     }
     const entry = state.data.entries.find((e) => e.key === key);
-    if (entry) IPTVPlayer.open(entry);
+    if (entry) {
+      IPTVPlayer.open(entry);
+      syncPlayerNav();
+    }
   }
 
   function clearHash() {
@@ -752,6 +852,7 @@
     dom.checkedOnly.addEventListener('change', () => { state.checkedOnly = dom.checkedOnly.checked; applyFilters(); });
     dom.epgOnly.addEventListener('change', () => { state.epgOnly = dom.epgOnly.checked; applyFilters(); });
     dom.favOnly.addEventListener('change', () => { state.favOnly = dom.favOnly.checked; applyFilters(); });
+    dom.progSearch.addEventListener('change', () => { state.progSearch = dom.progSearch.checked; applyFilters(); });
     dom.proxyBase.value = IPTVPlayer.getProxyBase();
     dom.proxySave.addEventListener('click', () => {
       const v = dom.proxyBase.value.trim();
@@ -799,6 +900,8 @@
       onClose: clearHash,
       // 「実際に再生できた」ときだけ履歴に残す(開いただけ・失敗は記録しない)
       onPlaying: (key) => IPTVStore.recordPlayed(key),
+      // ザッピング: 前/次ボタン・矢印キー・メディアキーから呼ばれる
+      onNavigate: navigateChannel,
     });
     bindEvents();
     initObserver();

@@ -94,8 +94,17 @@ jobs:
           echo "sites ok=$ok failed=$failed"
           test "$ok" -gt 0
 
+      # サイト別の番組数をジョブサマリに出す。0 件のサイトは選定枠だけを
+      # 消費して静かに劣化するため(ランナー IP ブロック / スクレイパの陳腐化)、
+      # グラブを試みたサイト一覧と突き合わせて別立てで警告する
       - name: Convert to compact schedule + detail shards
-        run: node scripts/grab-epg.mjs convert --indir "$RUNNER_TEMP/guides" --outdir data/epg --days "$EPG_DAYS"
+        run: |
+          node scripts/grab-epg.mjs convert \
+            --indir "$RUNNER_TEMP/guides" \
+            --outdir data/epg \
+            --days "$EPG_DAYS" \
+            --attempted-dir "$RUNNER_TEMP/epg-channels" \
+            --summary "$GITHUB_STEP_SUMMARY"
 
       # main には置かず、履歴を持たない epg-data ブランチへ毎回作り直して
       # force-push する(毎日 15MB 級のデータをコミットすると履歴が年 1GB 超

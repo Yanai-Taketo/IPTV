@@ -21,7 +21,8 @@
       "shard": 1,
       "p": [
         [1785848400, 3600, "Evening Show"],
-        [1785864600, 7200, "Border Crossing"]
+        [1785864600, 7200, "Border Crossing"],
+        [1785873600, 3600, "Half &amp; Half Marathon"]
       ]
     },
     "HttpOnly.ru": {

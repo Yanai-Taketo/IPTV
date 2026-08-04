@@ -12,6 +12,7 @@ const IPTVStore = (() => {
   const FAV_KEY = 'iptv:favorites';
   const HISTORY_KEY = 'iptv:history';
   const HISTORY_LIMIT = 50;
+  const PREF_PREFIX = 'iptv:pref:';
 
   function read(key) {
     try {
@@ -68,5 +69,28 @@ const IPTVStore = (() => {
     return history.length;
   }
 
-  return { isFavorite, favoriteCount, toggleFavorite, recordPlayed, historyRanks, historyCount };
+  // ---- 汎用の表示設定(音量など) --------------------------------------------
+  //
+  // お気に入り・履歴と違いスキーマを持たない小さな値を JSON で保存する。
+  // 壊れた値・保存不可(プライベートモード)では fallback を返し、機能は壊さない。
+
+  function getPref(key, fallback) {
+    try {
+      const raw = localStorage.getItem(PREF_PREFIX + key);
+      return raw === null ? fallback : JSON.parse(raw);
+    } catch (e) {
+      return fallback;
+    }
+  }
+
+  function setPref(key, value) {
+    try {
+      localStorage.setItem(PREF_PREFIX + key, JSON.stringify(value));
+    } catch (e) { /* 保存不可でもセッション内の状態は保たれる */ }
+  }
+
+  return {
+    isFavorite, favoriteCount, toggleFavorite, recordPlayed, historyRanks, historyCount,
+    getPref, setPref,
+  };
 })();

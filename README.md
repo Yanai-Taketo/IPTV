@@ -161,8 +161,14 @@ npm run test:live # 実 API へのスモークテスト(到達不可なら自動
   WebM 実再生、自動フォールバック、エラーパネル、URL 分類、DASH フォールバック
 - `tests/epg.spec.js` — 番組表(擬似クロックで時刻固定): カードの現在番組・境界越え更新・
   フィルタ・プレイヤーパネル・詳細シャード欠落時のフォールバック・EPG 無し環境の非表示
-- `tests/epg-transform.spec.js` — EPG パイプライン純粋ロジック(選定・変換・XML 生成)の
-  ユニットテスト
+- `tests/zapping.spec.js` — ザッピング(前/次選局)、Media Session、キーボード
+  ショートカット(選局・音量・ミュート・全画面)と音量の保存・復元
+- `tests/program-search.spec.js` — 番組タイトル検索(「番組名も検索」)と
+  HTML 実体参照の復号(未復号のまま配信されたデータへの耐性を含む)
+- `tests/epg-transform.spec.js` — EPG パイプライン純粋ロジック(選定・変換・XML 生成・
+  実体参照の復号・サイト別実績)のユニットテスト
+- `tests/playability-report.spec.js` — 再生可能性インデックスの前回比判定
+  (急落時の中断・しきい値の境界・ワークフローの手順順序)
 - `tests/resilience.spec.js` — 任意エンドポイント欠落時の縮退動作、必須エンドポイント
   失敗 → 再試行の復帰
 - `tests/realdata.spec.js` — 実データスナップショット(4 万チャンネル)での

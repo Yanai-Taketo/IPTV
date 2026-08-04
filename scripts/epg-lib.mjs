@@ -219,41 +219,52 @@ export function shardIndex(channelId, shardCount) {
   return (hash >>> 0) % shardCount;
 }
 
+/**
+ * 番組名・説明文に残る HTML 実体参照(`Half &amp; Half` など)を復号する。
+ * グラバーのサイト別スクレイパは HTML 由来のテキストをそのまま返すため、
+ * XML パーサを通ったあとも実体参照が残ることがある(本番データ実測では
+ * `&amp;` が 902 件・`&nbsp;` が 1 件)。復号しないと表示が崩れ、
+ * 番組タイトル検索で「half & half」が一致しない。
+ *
+ * 表は XML の 5 実体 + 番組表で現実に現れる範囲に絞る。未知の実体は
+ * 元の文字列のまま残す(取りこぼしても壊さない方を選ぶ)。二重符号化
+ * (`&amp;amp;`)は 1 回だけ復号する — 繰り返すと本来 `&amp;` と書きたい
+ * タイトルを壊すため。
+ * クライアント側にも同じ復号が必要(assets/js/epg.js)。生成データが
+ * 入れ替わるのは次回グラブ後なので、既存データにも耐えるようにしてある。
+ */
 const NAMED_ENTITIES = {
-  amp: '&',
-  lt: '<',
-  gt: '>',
-  quot: '"',
-  apos: "'",
-  nbsp: ' ', // U+00A0 ではなく通常の空白へ。表示は変わらず、見えない差分を残さない
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'",
+  nbsp: ' ', ndash: '–', mdash: '—', hellip: '…',
+  lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”',
+  bull: '•', middot: '·', deg: '°', trade: '™',
+  copy: '©', reg: '®', laquo: '«', raquo: '»',
+  eacute: 'é', egrave: 'è', agrave: 'à', ccedil: 'ç',
+  uuml: 'ü', ouml: 'ö', auml: 'ä', ntilde: 'ñ', szlig: 'ß',
 };
 
-/**
- * 実体参照を 1 パスだけ戻す。グラバーのサイトパーサには XMLTV / HTML の
- * エスケープを解かずに値を渡すものがあり(例: "Bounce &amp; fun")、
- * 表示側は textContent で入れるため素通しすると画面にそのまま出てしまう。
- * 置換を 1 パスに限るのは、本文中の "&amp;lt;" を "<" まで戻さないため。
- */
-function decodeEntities(text) {
-  if (!text.includes('&')) return text;
-  return text.replace(/&(#[0-9]+|#x[0-9a-f]+|[a-z]+);/gi, (ref, body) => {
+const ENTITY_RE = /&(#[0-9]+|#[xX][0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g;
+
+export function decodeEntities(text) {
+  if (typeof text !== 'string' || text.indexOf('&') === -1) return text;
+  return text.replace(ENTITY_RE, (match, body) => {
     if (body[0] === '#') {
-      const code = body[1] === 'x' || body[1] === 'X'
-        ? Number.parseInt(body.slice(2), 16)
-        : Number.parseInt(body.slice(1), 10);
-      // 不正な符号位置(範囲外・NUL・サロゲート単体)は元の文字列のまま残す
-      if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) return ref;
-      if (code >= 0xd800 && code <= 0xdfff) return ref;
+      const hex = body[1] === 'x' || body[1] === 'X';
+      const code = parseInt(hex ? body.slice(2) : body.slice(1), hex ? 16 : 10);
+      // 範囲外・サロゲート単体は復号すると壊れた文字になるので元のまま残す
+      if (!Number.isFinite(code) || code <= 0 || code > 0x10ffff) return match;
+      if (code >= 0xd800 && code <= 0xdfff) return match;
       return String.fromCodePoint(code);
     }
-    const named = NAMED_ENTITIES[body.toLowerCase()];
-    return named === undefined ? ref : named;
+    const named = NAMED_ENTITIES[body];
+    return named === undefined ? match : named;
   });
 }
 
 function firstValue(list) {
   if (!Array.isArray(list) || !list.length) return '';
   const v = list[0] && list[0].value != null ? String(list[0].value) : '';
+  // 復号してから trim する(`&nbsp;` だけの値を空文字に畳むため)
   return decodeEntities(v).trim();
 }
 
@@ -280,7 +291,6 @@ function episodeLabel(episodeNumbers) {
  * - タイトル無し・時刻不正・長すぎる番組はデータ不良としてスキップ
  * - 生成時点より pruneAgeSec 以上前に終了した番組は落とす(配信サイズ削減)
  * - 同一 (開始時刻, タイトル) の重複(日またぎで両日に現れる番組)は 1 つに畳む
- * - タイトル・副題・説明・カテゴリに残った実体参照(&amp; など)は 1 回だけ戻す
  *
  * @param {object} grabJson {channels: [...], programs: [...]}
  * @param {object} opts {generatedAt, days, shardCount, descLimit, maxDurationSec, pruneAgeSec}
@@ -346,6 +356,8 @@ export function convertGuide(grabJson, opts = {}) {
   const channels = {};
   const shards = Array.from({ length: shardCount }, () => ({}));
   const sites = new Set();
+  // サイト別の実績(ジョブサマリ用。「N 日連続 0 件」の自動デナイリストの土台)
+  const bySite = new Map();
   let programCount = 0;
 
   for (const channelId of [...perChannel.keys()].sort()) {
@@ -353,6 +365,12 @@ export function convertGuide(grabJson, opts = {}) {
     const programs = [...ch.byStart.values()].sort((a, b) => a.start - b.start || a.dur - b.dur);
     if (!programs.length) continue;
     const shard = shardIndex(channelId, shardCount);
+    if (ch.site) {
+      const acc = bySite.get(ch.site) || { site: ch.site, channels: 0, programs: 0 };
+      acc.channels++;
+      acc.programs += programs.length;
+      bySite.set(ch.site, acc);
+    }
     channels[channelId] = {
       site: ch.site,
       feed: ch.feed,
@@ -380,9 +398,51 @@ export function convertGuide(grabJson, opts = {}) {
     channels,
   };
 
+  const perSite = [...bySite.values()].sort(
+    (a, b) => b.programs - a.programs || a.site.localeCompare(b.site)
+  );
+
   return {
     schedule,
     shards,
-    stats: { ...schedule.counts, skippedPrograms, prunedPrograms },
+    stats: { ...schedule.counts, skippedPrograms, prunedPrograms, perSite },
   };
+}
+
+/**
+ * サイト別実績を GitHub Actions のジョブサマリ用 Markdown にする。
+ * attemptedSites を渡すと「グラブしたのに 0 件だったサイト」も表に出す
+ * (ランナー IP のブロックはこの形で現れる — docs/next-features.md §2-1)。
+ */
+export function formatGrabSummary(stats, attemptedSites = []) {
+  const rows = [...stats.perSite];
+  const produced = new Set(rows.map((r) => r.site));
+  const empty = [...attemptedSites].filter((s) => !produced.has(s)).sort();
+  for (const site of empty) rows.push({ site, channels: 0, programs: 0, empty: true });
+
+  const n = (v) => String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const lines = [
+    '## 番組表グラブ結果',
+    '',
+    `チャンネル ${n(stats.channels)} ・ 番組 ${n(stats.programs)} ・ サイト ${n(stats.sites)}` +
+      `(不良 ${n(stats.skippedPrograms)} 件 / 終了済み ${n(stats.prunedPrograms)} 件をスキップ)`,
+    '',
+    '| サイト | チャンネル | 番組 |',
+    '|---|---:|---:|',
+  ];
+  for (const r of rows) {
+    lines.push(`| ${r.empty ? '⚠️ ' : ''}${r.site} | ${n(r.channels)} | ${n(r.programs)} |`);
+  }
+  lines.push('');
+  if (empty.length) {
+    lines.push(
+      `⚠️ 番組が 0 件だったサイト (${empty.length}): ${empty.join(', ')}`,
+      '',
+      '<sub>0 件が続くサイトは ランナー IP ブロックの可能性があります' +
+        '(scripts/epg-lib.mjs の EXCLUDED_SITES を参照)</sub>'
+    );
+  } else if (attemptedSites.length) {
+    lines.push('✅ グラブしたすべてのサイトから番組を取得できました');
+  }
+  return lines.join('\n') + '\n';
 }
